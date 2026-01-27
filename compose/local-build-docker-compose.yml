@@ -28,7 +28,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql
-      - ./postgres/init:/docker-entrypoint-initdb.d
+      - ../postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kontexted -d kontexted"]
       interval: 5s
@@ -58,7 +58,7 @@ services:
       - "traefik.http.routers.keycloak.entrypoints=web"
       - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
     volumes:
-      - ./keycloak/full:/opt/keycloak/data/import
+      - ../keycloak/full:/opt/keycloak/data/import
     extra_hosts:
       - "keycloak.localhost:host-gateway"
       - "app.localhost:host-gateway"
@@ -66,7 +66,9 @@ services:
       postgres:
         condition: service_healthy
   collab:
-    image: ghcr.io/kontexted/collab:latest
+    build:
+      context: ..
+      dockerfile: ./apps/collab/Dockerfile
     container_name: collab
     restart: unless-stopped
     environment:
@@ -84,7 +86,9 @@ services:
       postgres:
         condition: service_healthy
   webapp:
-    image: ghcr.io/kontexted/webapp:latest
+    build:
+      context: ..
+      dockerfile: ./apps/webapp/Dockerfile
     container_name: webapp
     restart: unless-stopped
     environment:
