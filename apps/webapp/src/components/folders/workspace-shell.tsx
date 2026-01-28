@@ -3,6 +3,11 @@
 import type { ReactNode } from "react";
 
 import FolderTree from "@/components/folders/folder-tree";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import type { WorkspaceTree } from "@/lib/workspace-tree";
 
@@ -31,16 +36,23 @@ export default function WorkspaceShell({
 }: WorkspaceShellProps) {
   return (
     <SidebarProvider>
-      <FolderTree
-        workspaceSlug={workspaceSlug}
-        workspaceName={workspaceName}
-        workspaces={workspaces}
-        initialTree={initialTree}
-        initialLabelMode={initialLabelMode}
-      />
-      <SidebarInset className="h-svh min-h-0 overflow-hidden">
-        {children}
-      </SidebarInset>
+      <ResizablePanelGroup orientation="horizontal" className="h-svh">
+        <ResizablePanel defaultSize={20} minSize={300} maxSize={500}>
+          <FolderTree
+            workspaceSlug={workspaceSlug}
+            workspaceName={workspaceName}
+            workspaces={workspaces}
+            initialTree={initialTree}
+            initialLabelMode={initialLabelMode}
+          />
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={80}>
+          <SidebarInset className="h-svh min-h-0 overflow-hidden">
+            {children}
+          </SidebarInset>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </SidebarProvider>
   );
 }

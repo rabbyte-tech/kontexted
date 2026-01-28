@@ -8,11 +8,8 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type FormEvent,
-  type MouseEvent,
-  type RefObject,
 } from "react";
 import {
   DndContext,
@@ -33,9 +30,14 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
+  CloudUpload,
+  FilePlus,
   FileText,
   Folder as FolderIcon,
+  FolderPlus,
   GripVertical,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -46,6 +48,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -59,6 +68,7 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import type { FolderNode, NoteSummary, WorkspaceTree } from "@/lib/workspace-tree";
+import MarkdownUpload from "./markdown-upload";
 
 const authClient = createAuthClient({
   plugins: [genericOAuthClient()],
@@ -85,19 +95,6 @@ type DragItem = {
   type: "folder" | "note";
   publicId: string;
 };
-
-type ContextMenuTarget =
-  | { type: "root"; id: null }
-  | { type: "folder"; publicId: string }
-  | { type: "note"; publicId: string };
-
-type ContextMenuState = {
-  x: number;
-  y: number;
-  target: ContextMenuTarget;
-};
-
-type ContextMenuAction = "create-folder" | "create-note" | "rename-folder" | "rename-note" | "delete-note" | "delete-folder";
 
 type DialogState =
   | { mode: "create-folder"; targetFolderPublicId: string | null }
@@ -246,7 +243,9 @@ const NoteRow = ({
   queryString,
   selectedNotePublicId,
   dragEnabled,
-  onContextMenu,
+  onRenameNote,
+  onDeleteNote,
+  level = 0,
 }: {
   workspaceSlug: string;
   note: NoteSummary;
@@ -254,7 +253,9 @@ const NoteRow = ({
   queryString: string;
   selectedNotePublicId: string | null;
   dragEnabled: boolean;
-  onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
+  onRenameNote: () => void;
+  onDeleteNote: () => void;
+  level?: number;
 }) => {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } = useDraggable({
     id: makeDragId("note", note.publicId),
@@ -265,110 +266,172 @@ const NoteRow = ({
     : undefined;
 
   return (
-    <div
-      ref={setNodeRef}
-      style={rowStyle}
-      onContextMenu={onContextMenu}
-      className={cn(
-        "group flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition",
-        "hover:bg-accent",
-        selectedNotePublicId === note.publicId && "bg-accent text-foreground",
-        isDragging && "opacity-50"
-      )}
-    >
-      <button
-        type="button"
-        ref={setActivatorNodeRef}
-        {...dragProps}
-        className="opacity-0 transition group-hover:opacity-100 touch-none"
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
-      <FileText className="h-4 w-4 text-muted-foreground" />
-      <Link
-        className="flex-1 truncate"
-        href={`/workspaces/${workspaceSlug}/notes/${note.publicId}${queryString}`}
-      >
-        {label}
-      </Link>
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          ref={setNodeRef}
+          style={{
+            ...rowStyle,
+            paddingLeft: level === 0 ? 4 : level * 12,
+          }}
+          className={cn(
+            "group flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition",
+            "hover:bg-accent",
+            selectedNotePublicId === note.publicId && "bg-accent text-foreground",
+            isDragging && "opacity-50"
+          )}
+        >
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            {...dragProps}
+            className="opacity-0 transition group-hover:opacity-100 touch-none"
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="shrink-0 w-4" />
+            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Link
+              className="flex-1 truncate"
+              href={`/workspaces/${workspaceSlug}/notes/${note.publicId}${queryString}`}
+            >
+              {label}
+            </Link>
+          </div>
+        </div>
+      </ContextMenuTrigger>
+      <NoteContextMenu
+        onRenameNote={onRenameNote}
+        onDeleteNote={onDeleteNote}
+      />
+    </ContextMenu>
   );
 };
 
 const RootDropRow = ({
-  onContextMenu,
+  onCreateFolder,
+  onCreateNote,
+  onUpload,
 }: {
-  onContextMenu: (event: MouseEvent<HTMLDivElement>) => void;
+  onCreateFolder: () => void;
+  onCreateNote: () => void;
+  onUpload: () => void;
 }) => {
   const { setNodeRef, isOver } = useDroppable({ id: rootDropId });
 
   return (
-    <div
-      ref={setNodeRef}
-      onContextMenu={onContextMenu}
-      className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition",
-        "hover:bg-accent",
-        isOver && "bg-accent/70"
-      )}
-    >
-      <FolderIcon className="h-4 w-4" />
-      <span className="font-medium text-foreground">Root</span>
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          ref={setNodeRef}
+          style={{ paddingLeft: 4 }}
+          className={cn(
+            "flex items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground transition",
+            "hover:bg-accent",
+            isOver && "bg-accent/70"
+          )}
+        >
+          <FolderIcon className="h-4 w-4" />
+          <span className="font-medium text-foreground">Root</span>
+        </div>
+      </ContextMenuTrigger>
+      <RootContextMenu
+        onCreateFolder={onCreateFolder}
+        onCreateNote={onCreateNote}
+        onUpload={onUpload}
+      />
+    </ContextMenu>
   );
 };
 
-const ContextMenu = ({
-  state,
-  onAction,
-  menuRef,
+const RootContextMenu = ({
+  onCreateFolder,
+  onCreateNote,
+  onUpload,
 }: {
-  state: ContextMenuState;
-  onAction: (action: ContextMenuAction) => void;
-  menuRef: RefObject<HTMLDivElement | null>;
+  onCreateFolder: () => void;
+  onCreateNote: () => void;
+  onUpload: () => void;
 }) => {
-  const items: { label: string; action: ContextMenuAction }[] = [];
-
-  if (state.target.type === "root") {
-    items.push(
-      { label: "New folder", action: "create-folder" },
-      { label: "New note", action: "create-note" }
-    );
-  }
-
-  if (state.target.type === "folder") {
-    items.push(
-      { label: "New folder", action: "create-folder" },
-      { label: "New note", action: "create-note" },
-      { label: "Rename folder", action: "rename-folder" },
-      { label: "Delete folder", action: "delete-folder" }
-    );
-  }
-
-  if (state.target.type === "note") {
-    items.push(
-      { label: "Rename note", action: "rename-note" },
-      { label: "Delete note", action: "delete-note" }
-    );
-  }
-
   return (
-    <div
-      ref={menuRef}
-      className="fixed z-50 min-w-[180px] overflow-hidden rounded-md border border-border bg-card p-1 text-sm shadow-lg"
-      style={{ left: state.x, top: state.y }}
-    >
-      {items.map((item) => (
-        <button
-          key={item.action}
-          type="button"
-          onClick={() => onAction(item.action)}
-          className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-foreground transition hover:bg-accent"
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
+    <ContextMenuContent>
+      <ContextMenuItem onClick={onCreateFolder}>
+        <FolderPlus className="mr-2 h-4 w-4" />
+        New folder
+      </ContextMenuItem>
+      <ContextMenuItem onClick={onCreateNote}>
+        <FilePlus className="mr-2 h-4 w-4" />
+        New note
+      </ContextMenuItem>
+      <ContextMenuItem onClick={onUpload}>
+        <CloudUpload className="mr-2 h-4 w-4" />
+        Upload markdown files
+      </ContextMenuItem>
+    </ContextMenuContent>
+  );
+};
+
+const FolderContextMenu = ({
+  onCreateFolder,
+  onCreateNote,
+  onRenameFolder,
+  onDeleteFolder,
+  onUpload,
+}: {
+  onCreateFolder: () => void;
+  onCreateNote: () => void;
+  onRenameFolder: () => void;
+  onDeleteFolder: () => void;
+  onUpload: () => void;
+}) => {
+  return (
+    <ContextMenuContent>
+      <ContextMenuItem onClick={onCreateFolder}>
+        <FolderPlus className="mr-2 h-4 w-4" />
+        New folder
+      </ContextMenuItem>
+      <ContextMenuItem onClick={onCreateNote}>
+        <FilePlus className="mr-2 h-4 w-4" />
+        New note
+      </ContextMenuItem>
+      <ContextMenuItem onClick={onUpload}>
+        <CloudUpload className="mr-2 h-4 w-4" />
+        Upload markdown files
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onClick={onRenameFolder}>
+        <Pencil className="mr-2 h-4 w-4" />
+        Rename folder
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem variant="destructive" onClick={onDeleteFolder}>
+        <Trash2 className="mr-2 h-4 w-4" />
+        Delete folder
+      </ContextMenuItem>
+    </ContextMenuContent>
+  );
+};
+
+const NoteContextMenu = ({
+  onRenameNote,
+  onDeleteNote,
+}: {
+  onRenameNote: () => void;
+  onDeleteNote: () => void;
+}) => {
+  return (
+    <ContextMenuContent>
+      <ContextMenuItem onClick={onRenameNote}>
+        <Pencil className="mr-2 h-4 w-4" />
+        Rename note
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem variant="destructive" onClick={onDeleteNote}>
+        <Trash2 className="mr-2 h-4 w-4" />
+        Delete note
+      </ContextMenuItem>
+    </ContextMenuContent>
   );
 };
 
@@ -384,8 +447,13 @@ const FolderRow = ({
   dragEnabled,
   labelMode,
   queryString,
-  onFolderContextMenu,
-  onNoteContextMenu,
+  onCreateFolder,
+  onCreateNote,
+  onRenameFolder,
+  onDeleteFolder,
+  onUpload,
+  onRenameNote,
+  onDeleteNote,
 }: {
   node: FolderNode;
   level: number;
@@ -398,8 +466,13 @@ const FolderRow = ({
   dragEnabled: boolean;
   labelMode: TreeLabelMode;
   queryString: string;
-  onFolderContextMenu: (event: MouseEvent<HTMLDivElement>, folderPublicId: string) => void;
-  onNoteContextMenu: (event: MouseEvent<HTMLDivElement>, notePublicId: string) => void;
+  onCreateFolder: () => void;
+  onCreateNote: () => void;
+  onRenameFolder: () => void;
+  onDeleteFolder: () => void;
+  onUpload: () => void;
+  onRenameNote: (notePublicId: string) => void;
+  onDeleteNote: (notePublicId: string) => void;
 }) => {
   const isExpanded = expandedIds.has(node.id);
   const label = labelMode === "name" ? node.name : node.displayName;
@@ -416,45 +489,58 @@ const FolderRow = ({
 
   return (
     <div ref={setDropRef} className="space-y-1">
-      <div
-        ref={setNodeRef}
-        style={rowStyle}
-        onContextMenu={(event) => onFolderContextMenu(event, node.publicId)}
-        className={cn(
-          "group flex items-center gap-2 rounded-md px-2 py-1 text-sm transition",
-          "hover:bg-accent",
-          isOver && "bg-accent/70",
-          selectedFolderPublicId === node.publicId && "bg-accent text-foreground",
-          isDragging && "opacity-50"
-        )}
-      >
-        <div style={{ paddingLeft: level * 12 }} className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => toggleFolder(node.id)}
-            className="text-muted-foreground"
-            aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            ref={setNodeRef}
+            style={{
+              ...rowStyle,
+              paddingLeft: level === 0 ?4 : level * 12,
+            }}
+            className={cn(
+              "group flex items-center gap-2 rounded-md px-2 py-1 text-sm transition",
+              "hover:bg-accent",
+              isOver && "bg-accent/70",
+              selectedFolderPublicId === node.publicId && "bg-accent text-foreground",
+              isDragging && "opacity-50"
+            )}
           >
-            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectFolder(node.id)}
-            className="flex items-center gap-2"
-          >
-            <FolderIcon className="h-4 w-4" />
-            <span className="font-medium text-foreground">{label}</span>
-          </button>
-        </div>
-        <button
-           type="button"
-           ref={setActivatorNodeRef}
-           {...dragProps}
-           className="ml-auto opacity-0 transition group-hover:opacity-100 touch-none"
-         >
-           <GripVertical className="h-3.5 w-3.5" />
-         </button>
-      </div>
+            <button
+              type="button"
+              ref={setActivatorNodeRef}
+              {...dragProps}
+              className="opacity-0 transition group-hover:opacity-100 touch-none"
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <button
+                type="button"
+                onClick={() => toggleFolder(node.id)}
+                className="text-muted-foreground shrink-0"
+                aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+              >
+                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </button>
+              <FolderIcon className="h-4 w-4 shrink-0" />
+              <button
+                type="button"
+                onClick={() => onSelectFolder(node.id)}
+                className="flex-1 truncate text-left"
+              >
+                {label}
+              </button>
+            </div>
+          </div>
+        </ContextMenuTrigger>
+        <FolderContextMenu
+          onCreateFolder={onCreateFolder}
+          onCreateNote={onCreateNote}
+          onRenameFolder={onRenameFolder}
+          onDeleteFolder={onDeleteFolder}
+          onUpload={onUpload}
+        />
+      </ContextMenu>
       {isExpanded ? (
         <div className="space-y-1">
           {buildTreeItems(node.children, node.notes, labelMode).map((item) => {
@@ -473,24 +559,30 @@ const FolderRow = ({
                   dragEnabled={dragEnabled}
                   labelMode={labelMode}
                   queryString={queryString}
-                  onFolderContextMenu={onFolderContextMenu}
-                  onNoteContextMenu={onNoteContextMenu}
+                  onCreateFolder={onCreateFolder}
+                  onCreateNote={onCreateNote}
+                  onRenameFolder={onRenameFolder}
+                  onDeleteFolder={onDeleteFolder}
+                  onUpload={onUpload}
+                  onRenameNote={onRenameNote}
+                  onDeleteNote={onDeleteNote}
                 />
               );
             }
 
             return (
-              <div key={`note-${item.note.id}`} style={{ paddingLeft: (level + 1) * 12 }}>
-                <NoteRow
-                  workspaceSlug={workspaceSlug}
-                  note={item.note}
-                  label={item.label}
-                  queryString={queryString}
-                  selectedNotePublicId={selectedNotePublicId}
-                  dragEnabled={dragEnabled}
-                  onContextMenu={(event) => onNoteContextMenu(event, item.note.publicId)}
-                />
-              </div>
+              <NoteRow
+                key={`note-${item.note.id}`}
+                workspaceSlug={workspaceSlug}
+                note={item.note}
+                label={item.label}
+                queryString={queryString}
+                selectedNotePublicId={selectedNotePublicId}
+                dragEnabled={dragEnabled}
+                onRenameNote={() => onRenameNote(item.note.publicId)}
+                onDeleteNote={() => onDeleteNote(item.note.publicId)}
+                level={level + 1}
+              />
             );
           })}
         </div>
@@ -564,7 +656,6 @@ export default function FolderTree({
   const [refreshing, setRefreshing] = useState(false);
   const [labelMode, setLabelMode] = useState<TreeLabelMode>(initialLabelMode);
   const [activeDrag, setActiveDrag] = useState<DragItem | null>(null);
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [dialogDisplayName, setDialogDisplayName] = useState("");
   const [dialogName, setDialogName] = useState("");
@@ -575,7 +666,7 @@ export default function FolderTree({
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [createWorkspaceError, setCreateWorkspaceError] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<{ folderPublicId: string | null } | null>(null);
 
   const { noteFolderMap } = useFolderMaps(tree);
   const dragLabels = useDragLabels(tree);
@@ -731,6 +822,80 @@ export default function FolderTree({
     return result;
   }, []);
 
+  const handleRootCreateFolder = useCallback(() => {
+    openDialog({ mode: "create-folder", targetFolderPublicId: null });
+  }, []);
+
+  const handleRootCreateNote = useCallback(() => {
+    openDialog({ mode: "create-note", targetFolderPublicId: null });
+  }, []);
+
+  const handleRootUpload = useCallback(() => {
+    setUploadTarget({ folderPublicId: null });
+  }, []);
+
+  const handleFolderCreateFolder = useCallback((folderPublicId: string) => {
+    openDialog({ mode: "create-folder", targetFolderPublicId: folderPublicId });
+  }, []);
+
+  const handleFolderCreateNote = useCallback((folderPublicId: string) => {
+    openDialog({ mode: "create-note", targetFolderPublicId: folderPublicId });
+  }, []);
+
+  const handleFolderRename = useCallback((folderPublicId: string) => {
+    const folderNode = findFolderByPublicId(folderPublicId, tree.folders);
+    if (!folderNode) return;
+
+    openDialog({
+      mode: "rename-folder",
+      targetId: folderNode.id,
+      targetPublicId: folderPublicId,
+      initialDisplayName: folderNode.displayName,
+      initialName: folderNode.name,
+    });
+  }, [tree, findFolderByPublicId]);
+
+  const handleFolderDelete = useCallback((folderPublicId: string) => {
+    const folderNode = findFolderByPublicId(folderPublicId, tree.folders);
+    if (!folderNode) return;
+
+    openDialog({
+      mode: "delete-folder",
+      targetPublicId: folderPublicId,
+      displayName: folderNode.displayName,
+    });
+  }, [tree, findFolderByPublicId]);
+
+  const handleFolderUpload = useCallback((folderPublicId: string) => {
+    setUploadTarget({ folderPublicId: folderPublicId });
+  }, []);
+
+  const handleNoteRename = useCallback((notePublicId: string) => {
+    const allNotes = [...collectAllNotes(tree.folders), ...tree.rootNotes];
+    const note = allNotes.find(n => n.publicId === notePublicId);
+    if (!note) return;
+
+    openDialog({
+      mode: "rename-note",
+      targetId: note.id,
+      targetPublicId: notePublicId,
+      initialTitle: note.title,
+      initialName: note.name,
+    });
+  }, [tree, collectAllNotes]);
+
+  const handleNoteDelete = useCallback((notePublicId: string) => {
+    const allNotes = [...collectAllNotes(tree.folders), ...tree.rootNotes];
+    const note = allNotes.find(n => n.publicId === notePublicId);
+    if (!note) return;
+
+    openDialog({
+      mode: "delete-note",
+      targetPublicId: notePublicId,
+      title: note.title,
+    });
+  }, [tree, collectAllNotes]);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveDrag(parseDragId(event.active.id));
   }, []);
@@ -778,36 +943,6 @@ export default function FolderTree({
   );
 
   useEffect(() => {
-    if (!contextMenu) {
-      return;
-    }
-
-    const handlePointerDown = (event: Event) => {
-      const target = event.target;
-      if (target instanceof Node && menuRef.current?.contains(target)) {
-        return;
-      }
-      setContextMenu(null);
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setContextMenu(null);
-      }
-    };
-
-    window.addEventListener("mousedown", handlePointerDown);
-    window.addEventListener("touchstart", handlePointerDown);
-    window.addEventListener("keydown", handleEscape);
-
-    return () => {
-      window.removeEventListener("mousedown", handlePointerDown);
-      window.removeEventListener("touchstart", handlePointerDown);
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [contextMenu]);
-
-  useEffect(() => {
     if (!hasWorkspace || workspaceSlug == null) {
       return;
     }
@@ -830,38 +965,6 @@ export default function FolderTree({
       source.close();
     };
   }, [hasWorkspace, refreshTree, workspaceSlug]);
-
-  const openContextMenu = useCallback((event: MouseEvent<HTMLDivElement>, target: ContextMenuTarget) => {
-    event.preventDefault();
-    const menuWidth = 200;
-    const menuHeight =
-      target.type === "note" ? 52 : target.type === "folder" ? 148 : 104;
-    const padding = 12;
-    const nextX = Math.min(event.clientX, window.innerWidth - menuWidth - padding);
-    const nextY = Math.min(event.clientY, window.innerHeight - menuHeight - padding);
-    setContextMenu({
-      x: Math.max(nextX, padding),
-      y: Math.max(nextY, padding),
-      target,
-    });
-  }, []);
-
-  const handleRootContextMenu = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => openContextMenu(event, { type: "root", id: null }),
-    [openContextMenu]
-  );
-
-  const handleFolderContextMenu = useCallback(
-    (event: MouseEvent<HTMLDivElement>, folderPublicId: string) =>
-      openContextMenu(event, { type: "folder", publicId: folderPublicId }),
-    [openContextMenu]
-  );
-
-  const handleNoteContextMenu = useCallback(
-    (event: MouseEvent<HTMLDivElement>, notePublicId: string) =>
-      openContextMenu(event, { type: "note", publicId: notePublicId }),
-    [openContextMenu]
-  );
 
   const openDialog = useCallback((nextDialog: DialogState) => {
     setDialog(nextDialog);
@@ -891,80 +994,6 @@ export default function FolderTree({
     setDialogError(null);
     setDialogSubmitting(false);
   }, []);
-
-  const handleContextMenuAction = useCallback(
-    (action: ContextMenuAction) => {
-      if (!contextMenu) {
-        return;
-      }
-
-      const { target } = contextMenu;
-      setContextMenu(null);
-
-      if (action === "create-folder") {
-        const targetFolderPublicId = target.type === "folder" ? target.publicId : null;
-        openDialog({ mode: "create-folder", targetFolderPublicId });
-        return;
-      }
-
-      if (action === "create-note") {
-        const targetFolderPublicId = target.type === "folder" ? target.publicId : null;
-        openDialog({ mode: "create-note", targetFolderPublicId });
-        return;
-      }
-
-      if (action === "rename-folder" && target.type === "folder") {
-        const folderNode = findFolderByPublicId(target.publicId, tree.folders);
-        if (!folderNode) return;
-
-        openDialog({
-          mode: "rename-folder",
-          targetId: folderNode.id,
-          targetPublicId: target.publicId,
-          initialDisplayName: folderNode.displayName,
-          initialName: folderNode.name,
-        });
-      }
-
-      if (action === "rename-note" && target.type === "note") {
-        const allNotes = [...collectAllNotes(tree.folders), ...tree.rootNotes];
-        const note = allNotes.find(n => n.publicId === target.publicId);
-        if (!note) return;
-
-        openDialog({
-          mode: "rename-note",
-          targetId: note.id,
-          targetPublicId: target.publicId,
-          initialTitle: note.title,
-          initialName: note.name,
-        });
-      }
-
-      if (action === "delete-note" && target.type === "note") {
-        const allNotes = [...collectAllNotes(tree.folders), ...tree.rootNotes];
-        const note = allNotes.find(n => n.publicId === target.publicId);
-        if (!note) return;
-
-        openDialog({
-          mode: "delete-note",
-          targetPublicId: target.publicId,
-          title: note.title,
-        });
-      }
-
-      if (action === "delete-folder" && target.type === "folder") {
-        const folderNode = findFolderByPublicId(target.publicId, tree.folders);
-        if (!folderNode) return;
-
-        openDialog({
-          mode: "delete-folder",
-          targetPublicId: target.publicId,
-          displayName: folderNode.displayName,
-        });
-      }
-    },
-    [contextMenu, tree, openDialog, findFolderByPublicId, collectAllNotes]
-  );
 
   const getDialogCopy = (state: DialogState) => {
     if (state.mode === "create-folder") {
@@ -1264,7 +1293,7 @@ export default function FolderTree({
 
   return (
     <>
-    <Sidebar collapsible="none" className="border-r border-border h-svh">
+    <Sidebar collapsible="none" className="w-full min-w-[300px] border-r border-border h-svh">
       <SidebarHeader className="gap-3 px-4 py-3">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -1360,7 +1389,11 @@ export default function FolderTree({
           >
             <div className="space-y-2">
               <div className="mt-1">
-                <RootDropRow onContextMenu={handleRootContextMenu} />
+                <RootDropRow
+                  onCreateFolder={handleRootCreateFolder}
+                  onCreateNote={handleRootCreateNote}
+                  onUpload={handleRootUpload}
+                />
               </div>
               {tree.rootNotes.length === 0 && tree.folders.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No notes or folders yet.</p>
@@ -1382,8 +1415,13 @@ export default function FolderTree({
                           dragEnabled={dragEnabled}
                           labelMode={labelMode}
                           queryString={queryString}
-                          onFolderContextMenu={handleFolderContextMenu}
-                          onNoteContextMenu={handleNoteContextMenu}
+                          onCreateFolder={() => handleFolderCreateFolder(item.node.publicId)}
+                          onCreateNote={() => handleFolderCreateNote(item.node.publicId)}
+                          onRenameFolder={() => handleFolderRename(item.node.publicId)}
+                          onDeleteFolder={() => handleFolderDelete(item.node.publicId)}
+                          onUpload={() => handleFolderUpload(item.node.publicId)}
+                          onRenameNote={handleNoteRename}
+                          onDeleteNote={handleNoteDelete}
                         />
                       );
                     }
@@ -1397,7 +1435,9 @@ export default function FolderTree({
                         queryString={queryString}
                         selectedNotePublicId={selectedNotePublicId}
                         dragEnabled={dragEnabled}
-                        onContextMenu={(event) => handleNoteContextMenu(event, item.note.publicId)}
+                        onRenameNote={() => handleNoteRename(item.note.publicId)}
+                        onDeleteNote={() => handleNoteDelete(item.note.publicId)}
+                        level={0}
                       />
                     );
                   })}
@@ -1587,9 +1627,15 @@ export default function FolderTree({
         </div>
       ) : null}
     </Sidebar>
-     {contextMenu ? (
-       <ContextMenu state={contextMenu} onAction={handleContextMenuAction} menuRef={menuRef} />
-     ) : null}
+    {uploadTarget && workspaceSlug && (
+        <MarkdownUpload
+          workspaceSlug={workspaceSlug}
+          targetFolderPublicId={uploadTarget.folderPublicId}
+          open={true}
+          onOpenChange={(open) => !open && setUploadTarget(null)}
+          onSuccess={refreshTree}
+        />
+      )}
     </>
   );
 }
