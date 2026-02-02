@@ -6,11 +6,6 @@
       "enabled": true,
       "command": ["npx", "-y", "next-devtools-mcp@latest"]
     },
-    "playwright": {
-      "type": "local",
-      "enabled": true,
-      "command": ["npx", "@playwright/mcp@latest"]
-    },
     "shadcn": {
       "type": "local",
       "command": ["npx", "shadcn@latest", "mcp"],

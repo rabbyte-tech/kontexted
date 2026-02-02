@@ -1,52 +1,37 @@
-"use client";
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
+import { headers } from "next/headers";
+import AuthForm from "@/components/auth/AuthForm";
 
-import { useRouter } from "next/navigation";
-import { createAuthClient } from "better-auth/react";
-import { genericOAuthClient } from "better-auth/client/plugins";
-import { useEffect } from "react";
-import Image from "next/image";
+export default async function Home() {
+  const session = await auth.api.getSession({ headers: await headers() });
 
-import logo from "./logo.png";
-import { Button } from "@/components/ui/button";
+  if (session?.user) {
+    redirect("/workspaces");
+  }
 
-const authClient = createAuthClient({
-  plugins: [genericOAuthClient()],
-});
+  const authMethod = process.env.AUTH_METHOD || "keycloak";
+  const keycloakConfigured = !!(
+    process.env.AUTH_KEYCLOAK_ID &&
+    process.env.AUTH_KEYCLOAK_SECRET &&
+    process.env.AUTH_KEYCLOAK_ISSUER
+  );
 
-export default function Home() {
-  const router = useRouter();
-  const { data: session, isPending } = authClient.useSession();
+  const effectiveAuthMethod =
+    authMethod === "keycloak" && !keycloakConfigured ? "email-password" :
+    authMethod === "email-password" ? "email-password" :
+    keycloakConfigured ? "keycloak" : "email-password";
 
-  useEffect(() => {
-    if (session?.user) {
-      router.replace("/workspaces");
-    }
-  }, [router, session?.user]);
-
-  const handleSignIn = async () => {
-    await authClient.signIn.oauth2({
-      providerId: "keycloak",
-    });
-  };
+  const inviteCodeAvailable = !!process.env.INVITE_CODE;
 
   return (
     <div className="bg-background flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
       <div className="w-full max-w-sm">
         <div className="flex flex-col gap-6 rounded-2xl border border-border bg-card p-8 shadow-sm">
-          <div className="flex flex-col items-center gap-2 text-center">
-            <Image src={logo} alt="Kontexted" className="h-8 w-auto" />
-            <h1 className="text-xl font-bold">Sign in</h1>
-            <p className="text-sm text-muted-foreground">
-              Access your workspaces and start collaborating.
-            </p>
-          </div>
-          {isPending ? (
-            <p className="text-center text-sm text-muted-foreground">Loading session...</p>
-          ) : (
-            <Button type="button" onClick={handleSignIn} className="w-full">
-              Continue with Keycloak
-            </Button>
-          )}
+          <AuthForm
+            authMethod={effectiveAuthMethod}
+            inviteCodeAvailable={inviteCodeAvailable}
+          />
         </div>
       </div>
     </div>
