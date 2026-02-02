@@ -36,7 +36,7 @@ Kontexted is a web-based, real-time collaborative markdown editor designed speci
 - **Real-time Collaboration** - Multiple users can edit simultaneously with CRDT-based conflict resolution
 - **MCP Integration** - AI assistants can query your notes directly through [kontexted-mcp-cli](https://github.com/kontexted/kontexted-mcp-cli)
 - **Version History** - Track every change with revision history and line-by-line blame tracking
-- **Secure Authentication** - OAuth 2.0 via Keycloak
+- **Secure Authentication** - Email/password with invite codes (optional Keycloak OAuth 2.0)
 
 ---
 
@@ -50,7 +50,7 @@ Kontexted is a web-based, real-time collaborative markdown editor designed speci
 | **MCP Server** | Built-in MCP endpoint for AI assistant integration |
 | **Version Control** | Complete revision history with author attribution |
 | **Blame Tracking** | See who wrote each line and when |
-| **OAuth 2.0** | Secure authentication via Keycloak |
+| **Authentication** | Email/password with invite codes (optional Keycloak OAuth 2.0) |
 
 ---
 
@@ -76,24 +76,15 @@ docker compose up -d
 | Service | URL |
 |---------|-----|
 | Webapp | http://app.localhost |
-| Keycloak Admin | http://keycloak.localhost |
-
-### Pre-configured Users
-
-The following users are pre-created for quick access:
-
-| Username | Password | Role |
-|----------|----------|------|
-| `admin` | `admin` | Keycloak Administrator |
-| `user1` | `password` | Regular User |
-| `user2` | `password` | Regular User |
 
 ### First Steps
 
-1. Sign in at http://app.localhost using any of the user accounts above
+1. Sign up at http://app.localhost with the invite code set in your environment
 2. Create your first workspace
 3. Add folders and notes to document your project
 4. Share with team members and start collaborating!
+
+**Note:** By default, Kontexted uses email/password authentication with invite codes. Keycloak OAuth 2.0 can be optionally configured for enterprise deployments.
 
 ---
 
@@ -120,10 +111,10 @@ The `docker-compose.yml` includes all required services:
 | Service | Purpose |
 |---------|---------|
 | `postgres` | PostgreSQL database |
-| `keycloak` | OAuth 2.0 identity provider |
 | `traefik` | Reverse proxy and load balancer |
 | `webapp` | Next.js application |
 | `collab` | WebSocket collaboration server |
+| `keycloak` | Optional OAuth 2.0 identity provider |
 
 #### Environment Variables
 
@@ -132,11 +123,13 @@ The following environment variables can be configured in `docker-compose.yml`:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://kontexted:kontexted@postgres:5432/kontexted` |
-| `AUTH_KEYCLOAK_ID` | OAuth client ID | `kontexted-webapp` |
-| `AUTH_KEYCLOAK_SECRET` | OAuth client secret | `kontexted-local-secret` |
-| `AUTH_KEYCLOAK_ISSUER` | Keycloak issuer URL | `http://keycloak.localhost/realms/kontexted` |
+| `AUTH_METHOD` | Authentication method (`email-password` or `keycloak`) | `email-password` (auto-detects if not set) |
+| `AUTH_KEYCLOAK_ID` | OAuth client ID (Keycloak only) | `kontexted-webapp` |
+| `AUTH_KEYCLOAK_SECRET` | OAuth client secret (Keycloak only) | `kontexted-local-secret` |
+| `AUTH_KEYCLOAK_ISSUER` | Keycloak issuer URL (Keycloak only) | `http://keycloak.localhost/realms/kontexted` |
 | `BETTER_AUTH_SECRET` | Session encryption secret | `2f9569d6a7081d4fc978afc430d06b80` |
 | `BETTER_AUTH_URL` | Base URL for auth callbacks | `http://app.localhost` |
+| `INVITE_CODE` | Invite code required for email/password sign-up | Empty (sign-up disabled) |
 | `COLLAB_TOKEN_SECRET` | Secret for collab server tokens | `6544c2e89932a0c72daf8c42c30b021e` |
 | `COLLAB_URL` | Internal collab server URL | `http://collab:8787` |
 | `PUBLIC_COLLAB_URL` | Public collab server URL | `ws://collab.localhost` |
@@ -149,27 +142,26 @@ For production deployment:
 
 1. **Update secrets** - Replace all default secrets with cryptographically secure values
 
-   Edit `keycloak/full/kontexted-realm.json` to change default credentials:
+    **For email/password authentication (default):**
+    - Set `INVITE_CODE` to a secure code to control who can sign up
+    - Update `BETTER_AUTH_SECRET`, `COLLAB_TOKEN_SECRET` to cryptographically secure values
 
-   - **OAuth Client Secret** (line 22): Change `"secret": "kontexted-local-secret"` to a secure value
-   - **User Passwords** (lines 36, 51): Change `"value": "password"` for `user1` and `user2` users
-   - **Admin Password**: Set `KEYCLOAK_ADMIN_PASSWORD` in `docker-compose.yml` to a secure value
-
-   After updating the realm JSON, restart the Keycloak container to apply changes:
-
-   ```bash
-   docker compose restart keycloak
-   ```
-
-   Then update the matching environment variables in `docker-compose.yml`:
-   - `AUTH_KEYCLOAK_SECRET` - Must match the OAuth client secret in realm JSON
-   - `COLLAB_TOKEN_SECRET` - Use a cryptographically secure secret
-   - `BETTER_AUTH_SECRET` - Use a cryptographically secure secret
+    **For Keycloak OAuth 2.0 (optional):**
+    - Edit `keycloak/full/kontexted-realm.json` to change default credentials:
+      - **OAuth Client Secret** (line 22): Change `"secret": "kontexted-local-secret"` to a secure value
+      - **User Passwords** (lines 36, 51): Change `"value": "password"` for users
+      - **Admin Password**: Set `KEYCLOAK_ADMIN_PASSWORD` in `docker-compose.yml`
+    - Set `AUTH_METHOD=keycloak` in `docker-compose.yml`
+    - Update environment variables:
+      - `AUTH_KEYCLOAK_SECRET` - Must match the OAuth client secret in realm JSON
+      - `COLLAB_TOKEN_SECRET` - Use a cryptographically secure secret
+      - `BETTER_AUTH_SECRET` - Use a cryptographically secure secret
+    - Restart the Keycloak container: `docker compose restart keycloak`
 
 2. **Enable HTTPS** - Configure Traefik with SSL/TLS certificates
 3. **Persistent storage** - Ensure `pgdata` volume is backed up regularly
-4. **Keycloak production mode** - Set `KC_HOSTNAME_STRICT: true` and use a real domain
-5. **Firewall rules** - Restrict database and Keycloak internal ports
+4. **Keycloak production mode** (if using Keycloak): Set `KC_HOSTNAME_STRICT: true` and use a real domain
+5. **Firewall rules** - Restrict database and internal ports
 
 ### Manual / Local Development
 
@@ -177,7 +169,6 @@ For production deployment:
 
 - Bun 1.0+
 - PostgreSQL 14+
-- Keycloak 20+
 
 #### Setup
 
@@ -199,22 +190,16 @@ CREATE USER kontexted WITH PASSWORD 'kontexted';
 GRANT ALL PRIVILEGES ON DATABASE kontexted TO kontexted;
 ```
 
-3. **Configure Keycloak:**
-
-Import the pre-configured realm from `keycloak/full/kontexted-realm.json` into your Keycloak instance.
-
-4. **Set environment variables:**
+3. **Set environment variables:**
 
 Copy `.env.example` files and configure:
 
 ```bash
 # apps/webapp/.env
 DATABASE_URL=postgresql://kontexted:kontexted@localhost:5432/kontexted
-AUTH_KEYCLOAK_ID=kontexted-webapp
-AUTH_KEYCLOAK_SECRET=kontexted-local-secret
-AUTH_KEYCLOAK_ISSUER=http://localhost:8080/realms/kontexted
 BETTER_AUTH_SECRET=change-me
 BETTER_AUTH_URL=http://localhost:3000
+INVITE_CODE=dev-invite-code
 COLLAB_TOKEN_SECRET=dev-secret
 COLLAB_URL=http://localhost:8787
 PUBLIC_COLLAB_URL=http://localhost:8787
@@ -223,6 +208,20 @@ PUBLIC_COLLAB_URL=http://localhost:8787
 COLLAB_TOKEN_SECRET=dev-secret
 DATABASE_URL=postgresql://kontexted:kontexted@localhost:5432/kontexted
 ```
+
+**Optional: Configure Keycloak for OAuth 2.0**
+
+To use Keycloak instead of email/password:
+
+```bash
+# apps/webapp/.env (add these)
+AUTH_METHOD=keycloak
+AUTH_KEYCLOAK_ID=kontexted-webapp
+AUTH_KEYCLOAK_SECRET=kontexted-local-secret
+AUTH_KEYCLOAK_ISSUER=http://localhost:8080/realms/kontexted
+```
+
+Import the pre-configured realm from `keycloak/full/kontexted-realm.json` into your Keycloak instance.
 
 5. **Run database migrations:**
 
@@ -272,7 +271,7 @@ kontexted/
 - **Frontend:** Next.js 16, React 19, TypeScript, Tailwind CSS, shadcn/ui
 - **Backend:** Bun, Hono, Yjs, Better Auth
 - **Database:** PostgreSQL, Drizzle ORM
-- **Auth:** Keycloak (OAuth 2.0)
+- **Auth:** Better Auth (email/password or optional Keycloak OAuth 2.0)
 - **Infrastructure:** Docker, Docker Compose, Traefik
 
 ---
