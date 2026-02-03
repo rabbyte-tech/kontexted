@@ -6,13 +6,17 @@ if [ -z "${DATABASE_URL}" ]; then
   exit 1
 fi
 
-echo "Waiting for postgres to be ready..."
-until pg_isready -d "${DATABASE_URL}" > /dev/null 2>&1; do
-  echo "Postgres is unavailable - sleeping"
-  sleep 1
-done
-
-echo "Postgres is ready! Running migrations..."
+if [ "${DATABASE_DIALECT}" = "sqlite" ]; then
+  echo "SQLite selected; skipping postgres readiness check"
+  echo "Running migrations..."
+else
+  echo "Waiting for postgres to be ready..."
+  until pg_isready -d "${DATABASE_URL}" > /dev/null 2>&1; do
+    echo "Postgres is unavailable - sleeping"
+    sleep 1
+  done
+  echo "Postgres is ready! Running migrations..."
+fi
 node ./apps/webapp/src/db/migrate.mjs
 
 echo "Migrations completed. Starting webapp..."

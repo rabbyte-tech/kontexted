@@ -5,10 +5,17 @@ import { Pool } from "pg";
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { migrate as migrateSqlite } from "drizzle-orm/better-sqlite3/migrator";
+import Database from "better-sqlite3";
+import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+const dialect = process.env.DATABASE_DIALECT === "sqlite" ? "sqlite" : "postgresql";
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "migrations"
+  `migrations/${dialect}`
 );
 
 async function main() {
@@ -19,28 +26,52 @@ async function main() {
     process.exit(1);
   }
 
-  const pool = new Pool({
-    connectionString: databaseUrl,
-  });
-
-  const db = drizzle(pool);
-
-  try {
-    await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
-    console.log("Migrations completed.");
-  } catch (err) {
-    console.error("[ERROR] Migration failed");
-    if (err instanceof Error) {
-      console.error(err.message);
-      if (err.stack) {
-        console.error(err.stack);
+  if (dialect === "sqlite") {
+    const dbPath = process.env.DATABASE_URL ?? "./data/kontexted.db";
+    mkdirSync(dirname(dbPath), { recursive: true });
+    const sqlite = new Database(dbPath);
+    const db = drizzleSqlite(sqlite);
+    try {
+      await migrateSqlite(db, { migrationsFolder: MIGRATIONS_DIR });
+      console.log("SQLite migrations completed.");
+    } catch (err) {
+      console.error("[ERROR] SQLite migration failed");
+      if (err instanceof Error) {
+        console.error(err.message);
+        if (err.stack) {
+          console.error(err.stack);
+        }
+      } else {
+        console.error(err);
       }
-    } else {
-      console.error(err);
+      process.exitCode = 1;
+    } finally {
+      sqlite.close();
     }
-    process.exitCode = 1;
-  } finally {
-    await pool.end();
+  } else {
+    const pool = new Pool({
+      connectionString: databaseUrl,
+    });
+
+    const db = drizzle(pool);
+
+    try {
+      await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
+      console.log("PostgreSQL migrations completed.");
+    } catch (err) {
+      console.error("[ERROR] Migration failed");
+      if (err instanceof Error) {
+        console.error(err.message);
+        if (err.stack) {
+          console.error(err.stack);
+        }
+      } else {
+        console.error(err);
+      }
+      process.exitCode = 1;
+    } finally {
+      await pool.end();
+    }
   }
 }
 

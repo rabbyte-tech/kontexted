@@ -55,7 +55,6 @@ export class YjsRoom extends Y.Doc {
     this.awareness.on('update', awarenessChangeHandler)
 
     this.on('update', (update, origin) => {
-      console.log(`[y-websocket-server] Document UPDATE in ${this.name}, conns: ${this.conns.size}, origin: ${origin}`)
       const encoder = encoding.createEncoder()
       encoding.writeVarUint(encoder, messageSync)
       syncProtocol.writeUpdate(encoder, update)

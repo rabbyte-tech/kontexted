@@ -26,9 +26,12 @@ if (authMethod === "keycloak" && !keycloakConfigured) {
   console.warn("AUTH_METHOD=keycloak but Keycloak vars missing; falling back to email/password");
 }
 
+const dialect = process.env.DATABASE_DIALECT === "sqlite" ? "sqlite" : "postgresql";
+const provider = dialect === "sqlite" ? "sqlite" : "pg";
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
-    provider: "pg",
+    provider,
     schema: {
       user: users,
       account: accounts,

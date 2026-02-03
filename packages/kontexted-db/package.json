@@ -4,7 +4,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
+    "./schema": "./src/schema/index.ts",
+    "./schema/sqlite": "./src/schema/sqlite/index.ts",
+    "./schema/postgres": "./src/schema/postgres/index.ts"
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^3.0.6",

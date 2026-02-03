@@ -72,6 +72,7 @@ services:
     environment:
       COLLAB_PORT: 8787
       COLLAB_TOKEN_SECRET: 6544c2e89932a0c72daf8c42c30b021e
+      DATABASE_DIALECT: postgresql
       DATABASE_URL: postgresql://kontexted:kontexted@postgres:5432/kontexted
       NODE_ENV: production
     labels:
@@ -88,6 +89,7 @@ services:
     container_name: webapp
     restart: unless-stopped
     environment:
+      DATABASE_DIALECT: postgresql
       DATABASE_URL: postgresql://kontexted:kontexted@postgres:5432/kontexted
       AUTH_KEYCLOAK_ID: kontexted-webapp
       AUTH_KEYCLOAK_SECRET: kontexted-local-secret

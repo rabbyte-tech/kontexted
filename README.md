@@ -116,12 +116,17 @@ The `docker-compose.yml` includes all required services:
 | `collab` | WebSocket collaboration server |
 | `keycloak` | Optional OAuth 2.0 identity provider |
 
+**Optional: Use SQLite instead of PostgreSQL**
+
+For a local SQLite setup, use `compose/local-build-docker-compose-sqlite.yml` instead of the default `docker-compose.yml`. This uses the required `DATABASE_DIALECT=sqlite` and a mounted SQLite data volume for the webapp and collab services.
+
 #### Environment Variables
 
 The following environment variables can be configured in `docker-compose.yml`:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `DATABASE_DIALECT` | Database dialect (`postgresql` or `sqlite`) | Required |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://kontexted:kontexted@postgres:5432/kontexted` |
 | `AUTH_METHOD` | Authentication method (`email-password` or `keycloak`) | `email-password` (auto-detects if not set) |
 | `AUTH_KEYCLOAK_ID` | OAuth client ID (Keycloak only) | `kontexted-webapp` |
@@ -167,7 +172,8 @@ For production deployment:
 
 #### Prerequisites
 
-- Bun 1.0+
+- Node.js 24.13+
+- pnpm
 - PostgreSQL 14+
 
 #### Setup
@@ -177,7 +183,7 @@ For production deployment:
 ```bash
 git clone https://github.com/kontexted/kontexted.git
 cd kontexted
-bun install
+pnpm install
 ```
 
 2. **Configure PostgreSQL:**
@@ -223,20 +229,36 @@ AUTH_KEYCLOAK_ISSUER=http://localhost:8080/realms/kontexted
 
 Import the pre-configured realm from `keycloak/full/kontexted-realm.json` into your Keycloak instance.
 
+**Optional: Use SQLite instead of PostgreSQL**
+
+SQLite is intended for lightweight local development. PostgreSQL remains the default for production.
+
+To opt out of PostgreSQL locally, set the following in your `.env` files:
+
+```bash
+# apps/webapp/.env
+DATABASE_DIALECT=sqlite
+DATABASE_URL=./data/kontexted.db
+
+# apps/collab/.env
+DATABASE_DIALECT=sqlite
+DATABASE_URL=../webapp/data/kontexted.db
+```
+
 5. **Run database migrations:**
 
 ```bash
-bun run db:migrate
+pnpm db:migrate
 ```
 
 6. **Start services:**
 
 ```bash
 # Terminal 1 - Start webapp
-bun run dev:webapp
+pnpm dev:webapp
 
 # Terminal 2 - Start collab server
-bun run dev:collab
+pnpm dev:collab
 ```
 
 Access the webapp at http://localhost:3000.
@@ -245,13 +267,13 @@ Access the webapp at http://localhost:3000.
 
 ## Architecture
 
-Kontexted is a monorepo managed by Bun workspaces with the following structure:
+Kontexted is a monorepo managed by pnpm workspaces with the following structure:
 
 ```
 kontexted/
 ├── apps/
 │   ├── webapp/          # Next.js 16 (React 19, TypeScript)
-│   └── collab/         # Bun + Hono (WebSocket server)
+│   └── collab/         # Node.js + Hono (WebSocket server)
 └── packages/
     └── kontexted-db/   # Drizzle ORM schema
 ```
@@ -261,16 +283,16 @@ kontexted/
 | Component | Tech Stack | Purpose |
 |-----------|------------|---------|
 | **Webapp** | Next.js 16, React 19, Tailwind CSS | UI, HTTP API, MCP server |
-| **Collab** | Bun, Hono, Yjs | Real-time collaboration via WebSocket |
-| **Database** | PostgreSQL, Drizzle ORM | Persistent data storage |
+| **Collab** | Node.js, Hono, Yjs | Real-time collaboration via WebSocket |
+| **Database** | PostgreSQL (default) or SQLite (local dev), Drizzle ORM | Persistent data storage |
 | **Auth** | Better Auth, Keycloak | OAuth 2.0 authentication |
 | **Reverse Proxy** | Traefik | Load balancing and routing |
 
 ### Tech Stack
 
 - **Frontend:** Next.js 16, React 19, TypeScript, Tailwind CSS, shadcn/ui
-- **Backend:** Bun, Hono, Yjs, Better Auth
-- **Database:** PostgreSQL, Drizzle ORM
+- **Backend:** Node.js, Hono, Yjs, Better Auth
+- **Database:** PostgreSQL (default) or SQLite (local dev), Drizzle ORM
 - **Auth:** Better Auth (email/password or optional Keycloak OAuth 2.0)
 - **Infrastructure:** Docker, Docker Compose, Traefik
 
