@@ -5,35 +5,42 @@
 - Follow these guidelines when editing, running commands, or adding files.
 - Prefer minimal, focused changes that match existing patterns.
 
+## Recent Migration
+This project was migrated from Bun to Node.js 24.13 with pnpm package manager in 2026.
+- Server infrastructure: Bun.serve() → Node.js HTTP server with @hono/node-server
+- WebSockets: hono/bun → @hono/node-ws + ws library
+- Package manager: Bun → pnpm workspaces
+
 ## Repository Layout
-- Monorepo managed by Bun workspaces.
+- Monorepo managed by pnpm workspaces.
 - `apps/webapp`: Next.js 16 app (React 19, TypeScript).
-- `apps/collab`: Bun + Hono websocket server.
+- `apps/collab`: Node.js 24.13 + Hono websocket server.
 - `packages/kontexted-db`: Shared Drizzle schema exports.
 - `opencode.json`: Opencode config (do not edit unless asked).
 
 ## Tooling and Package Manager
-- Use Bun (`bun`) for running scripts and installing dependencies.
-- Workspace scripts are run from repo root with `bun run`.
-- App-level scripts can be run with `bun run --cwd <path>`.
+- Use pnpm for running scripts and installing dependencies
+- Node.js version: 24.13 (see .nvmrc)
+- Workspace scripts are run from repo root with `pnpm --filter <package-name>`
+- App-level scripts can be run with `pnpm --filter <package-name> <command>`
 
 ## Build and Dev Commands
-- Install dependencies: `bun install` (from repo root).
-- Dev webapp: `bun run dev:webapp` (root) or `bun run --cwd apps/webapp dev`.
-- Dev collab server: `bun run dev:collab` (root) or `bun run --cwd apps/collab dev`.
-- Start webapp (prod): `bun run start:webapp` (root) or `bun run --cwd apps/webapp start`.
-- Start collab (prod): `bun run --cwd apps/collab start`.
-- Build webapp: `bun run build:webapp` (root) or `bun run --cwd apps/webapp build`.
+- Install dependencies: `pnpm install` (from repo root).
+- Dev webapp: `pnpm --filter @kontexted/webapp dev` or `pnpm dev:webapp` (root).
+- Dev collab server: `pnpm --filter @kontexted/collab dev` or `pnpm dev:collab` (root).
+- Start webapp (prod): `pnpm --filter @kontexted/webapp start` or `pnpm start:webapp` (root).
+- Start collab (prod): `pnpm --filter @kontexted/collab start` or `pnpm start:collab` (root).
+- Build webapp: `pnpm --filter @kontexted/webapp build` or `pnpm build:webapp` (root).
 
 ## Lint Commands
-- Webapp lint: `bun run --cwd apps/webapp lint`.
+- Webapp lint: `pnpm --filter @kontexted/webapp lint`.
 - No lint script is configured for `apps/collab` or `packages/kontexted-db`.
 
 ## Database Commands (webapp)
-- Generate migrations: `bun run --cwd apps/webapp db:generate`.
-- Run migrations: `bun run --cwd apps/webapp db:migrate` or `bun run db:migrate` (root).
-- Push schema: `bun run --cwd apps/webapp db:push`.
-- Studio: `bun run --cwd apps/webapp db:studio`.
+- Generate migrations: `pnpm --filter @kontexted/webapp db:generate`.
+- Run migrations: `pnpm --filter @kontexted/webapp db:migrate` or `pnpm db:migrate` (root).
+- Push schema: `pnpm --filter @kontexted/webapp db:push`.
+- Studio: `pnpm --filter @kontexted/webapp db:studio`.
 
 ## Test Commands
 - No test runner is configured in this repo (no `test` scripts or test files).
@@ -101,9 +108,9 @@
 - Client-exposed vars use the `PUBLIC_` prefix; keep `.env.example` up to date.
 
 ## Collab Service Patterns (apps/collab)
-- Hono routes live in `src/server.ts`.
+- Hono routes live in `src/server.ts` (using @hono/node-server and @hono/node-ws for Node.js compatibility).
 - Use `c.json()` for responses and pass status codes explicitly.
-- Websocket upgrade via `upgradeWebSocket` and `Bun.serve`.
+- Websocket upgrade via `@hono/node-ws` and standard Node.js HTTP server.
 - Log with `console.log`/`console.warn` for server diagnostics.
 - Handle auth failures by returning `401` or closing websocket with `1008`.
 

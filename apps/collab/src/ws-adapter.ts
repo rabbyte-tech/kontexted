@@ -7,36 +7,43 @@ type HandlerMap = {
   pong?: WebSocketEventHandler;
 };
 
-export const createBunWebSocketAdapter = (socket: WebSocket) => {
+import type { WebSocket } from "ws";
+
+export const createNodeWebSocketAdapter = (ws: WebSocket) => {
   const handlers: HandlerMap = {};
 
   const adapter = {
     binaryType: "arraybuffer" as BinaryType,
     get readyState() {
-      return socket.readyState;
+      return ws.readyState;
     },
     send(data: Uint8Array | ArrayBuffer, callback?: (error?: unknown) => void) {
       try {
-        socket.send(data);
+        ws.send(data);
         callback?.();
       } catch (error) {
         callback?.(error);
       }
     },
     close(code?: number, reason?: string) {
-      socket.close(code, reason);
+      ws.close(code, reason);
     },
     ping() {
-      if (socket && typeof (socket as any).ping === "function") {
-        (socket as any).ping();
-        return;
+      try {
+        // @ts-ignore - ws may not have ping, but it's optional
+        if (typeof ws.ping === 'function') {
+          ws.ping();
+        }
+      } catch (error) {
+        handlers.pong?.();
       }
-      handlers.pong?.();
     },
     on(event: "message" | "close" | "error" | "pong", handler: WebSocketEventHandler) {
+      // Store the handler - y-websocket-server calls this to register event callbacks
       handlers[event] = handler;
     },
     emit(event: "message" | "close" | "error" | "pong", data?: unknown) {
+      // Trigger the stored handler - @hono/node-ws handlers call this
       handlers[event]?.(data);
     },
   };
@@ -44,4 +51,4 @@ export const createBunWebSocketAdapter = (socket: WebSocket) => {
   return adapter;
 };
 
-export type BunWebSocketAdapter = ReturnType<typeof createBunWebSocketAdapter>;
+export type NodeWebSocketAdapter = ReturnType<typeof createNodeWebSocketAdapter>;

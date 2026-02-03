@@ -8,11 +8,11 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:webapp": "bun run --cwd apps/webapp dev",
-    "start:webapp": "bun run --cwd apps/webapp start",
-    "build:webapp": "bun run --cwd apps/webapp build",
-    "dev:collab": "bun run --cwd apps/collab dev",
-    "start:collab": "bun run --cwd apps/collab start",
-    "db:migrate": "bun run --cwd apps/webapp db:migrate"
+    "dev:webapp": "pnpm --filter @kontexted/webapp dev",
+    "start:webapp": "pnpm --filter @kontexted/webapp start",
+    "build:webapp": "pnpm --filter @kontexted/webapp build",
+    "dev:collab": "pnpm --filter @kontexted/collab dev",
+    "start:collab": "pnpm --filter @kontexted/collab start",
+    "db:migrate": "pnpm --filter @kontexted/webapp db:migrate"
   }
 }

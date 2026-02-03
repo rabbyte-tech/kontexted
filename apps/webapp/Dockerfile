@@ -1,42 +1,36 @@
-FROM oven/bun:1.3.6-alpine AS builder
+FROM node:24.13-alpine AS builder
+RUN npm install -g pnpm@latest
 WORKDIR /app
 
-COPY package.json bun.lock ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/kontexted-db ./packages/kontexted-db
 COPY apps/webapp ./apps/webapp
 COPY apps/collab ./apps/collab
 
-RUN bun install --frozen-lockfile --linker isolated \
-  --filter ./apps/webapp \
-  --filter ./packages/kontexted-db
+RUN pnpm install --frozen-lockfile
 
-WORKDIR /app/apps/webapp
-RUN bun run build
+RUN pnpm --filter @kontexted/webapp build
 
-FROM oven/bun:1.3.6-alpine
+FROM node:24.13-alpine AS migrate-deps
+WORKDIR /migrate
+
+RUN npm init -y
+RUN npm install --omit=dev pg@8.17.1 drizzle-orm@0.45.1 dotenv@17.2.3
+
+FROM node:24.13-alpine
 WORKDIR /app
-
 RUN apk add --no-cache postgresql-client
 
-COPY package.json bun.lock ./
-COPY apps/webapp/package.json ./apps/webapp/
-COPY apps/collab/package.json ./apps/collab/
-COPY packages/kontexted-db/package.json ./packages/kontexted-db/
-
-RUN bun install --production --frozen-lockfile --linker isolated \
-  --filter ./apps/webapp \
-  --filter ./packages/kontexted-db
-RUN bun add -d drizzle-kit
-
-COPY --from=builder /app/apps/webapp/.next ./apps/webapp/.next
+COPY --from=builder /app/apps/webapp/.next/standalone ./
+COPY --from=builder /app/apps/webapp/.next/static ./apps/webapp/.next/static
 COPY --from=builder /app/apps/webapp/public ./apps/webapp/public
+COPY --from=builder /app/apps/webapp/src/db/migrate.mjs ./apps/webapp/src/db/migrate.mjs
+COPY --from=builder /app/apps/webapp/src/db/migrations ./apps/webapp/src/db/migrations
+COPY --from=migrate-deps /migrate/node_modules ./apps/webapp/src/db/node_modules
 COPY apps/webapp/docker-entrypoint.sh ./apps/webapp/
-COPY apps/webapp/drizzle.config.ts ./apps/webapp/
-COPY apps/webapp/src/db ./apps/webapp/src/db
 
 RUN chmod +x ./apps/webapp/docker-entrypoint.sh
 
-WORKDIR /app
 ENV NODE_ENV=production
 EXPOSE 3000
 

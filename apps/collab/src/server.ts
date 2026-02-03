@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { upgradeWebSocket, websocket } from "hono/bun";
+import { createNodeWebSocket } from "@hono/node-ws";
+import { serve } from "@hono/node-server";
 
 import { getToken, verifyToken } from "./auth";
 import { env } from "./env";
@@ -14,7 +15,7 @@ import {
   clearRoomState,
 } from "./checkpoints";
 import { resolveRoomName } from "./rooms";
-import { createBunWebSocketAdapter, type BunWebSocketAdapter } from "./ws-adapter";
+import { createNodeWebSocketAdapter, type NodeWebSocketAdapter } from "./ws-adapter";
 import { getRoom, removeRoom, setupWSConnection } from "./y-websocket-server";
 
 const app = new Hono();
@@ -85,14 +86,18 @@ app.post("/api/save", async (c) => {
   }
 });
 
-const wsHandler = upgradeWebSocket((c) => {
+// Create WebSocket helper
+const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+
+const wsHandler = upgradeWebSocket(async (c) => {
+  const req = c.req.raw;
   let roomName: string | null = null;
-  let adapter: BunWebSocketAdapter | null = null;
+  let adapter: NodeWebSocketAdapter | null = null;
   let userId: string | null = null;
 
   return {
-    async onOpen(_event, ws) {
-      const token = getToken(c.req.raw);
+    async onOpen(event, ws) {
+      const token = getToken(req);
       if (!token) {
         ws.close(1008, "Unauthorized");
         return;
@@ -109,10 +114,9 @@ const wsHandler = upgradeWebSocket((c) => {
 
         console.log(`[server] New connection to ${roomName}, userId: ${userId}`);
 
-        const socket = "raw" in ws ? ws.raw : ws;
-        adapter = createBunWebSocketAdapter(socket);
+        adapter = createNodeWebSocketAdapter(ws);
 
-        setupWSConnection(adapter, c.req.raw, { docName: roomName });
+        setupWSConnection(adapter, req, { docName: roomName });
 
         const room = getRoom(roomName);
 
@@ -158,13 +162,13 @@ const wsHandler = upgradeWebSocket((c) => {
         ws.close(1008, "Unauthorized");
       }
     },
-    onMessage(event) {
+    onMessage(event, ws) {
       if (!adapter) {
         return;
       }
       adapter.emit("message", event.data);
     },
-    onClose() {
+    onClose(event, ws) {
       const room = roomName ? getRoom(roomName!) : null;
       console.log(`[server] Connection closed from ${roomName}, conns remaining: ${room?.conns.size || 0}`);
       if (adapter) {
@@ -185,16 +189,22 @@ const wsHandler = upgradeWebSocket((c) => {
         }
       }, 10000);
     },
+    onError(event, ws) {
+      console.warn(`[server] WebSocket error for ${roomName}:`, event);
+    },
   };
 });
 
 app.get("/ws", wsHandler);
 app.get("/ws/*", wsHandler);
 
-const server = Bun.serve({
+// Create HTTP server
+const server = serve({
+  fetch: app.fetch.bind(app),
   port: env.port,
-  fetch: (request, server) => app.fetch(request, server),
-  websocket,
 });
 
-console.log(`Collab server listening on http://localhost:${server.port}`);
+// Inject WebSocket support into the server
+injectWebSocket(server);
+
+console.log(`Collab server listening on http://localhost:${env.port}`);
