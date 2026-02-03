@@ -13,7 +13,7 @@ until pg_isready -d "${DATABASE_URL}" > /dev/null 2>&1; do
 done
 
 echo "Postgres is ready! Running migrations..."
-cd /app/apps/webapp && bun db:migrate && cd /app
+node ./apps/webapp/src/db/migrate.mjs
 
 echo "Migrations completed. Starting webapp..."
-cd /app/apps/webapp && exec bun start
+exec node ./apps/webapp/server.js

@@ -1,4 +1,4 @@
 node_modules
-*.bun-build
+pnpm-lock.yaml
 .DS_Store
 .idea

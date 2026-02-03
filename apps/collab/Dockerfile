@@ -1,14 +1,22 @@
-FROM oven/bun:1.3.6-alpine
+FROM node:24.13-alpine AS deps
+RUN npm install -g pnpm@latest
 WORKDIR /app
 
-COPY package.json bun.lock ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/kontexted-db ./packages/kontexted-db
 COPY apps/collab ./apps/collab
-COPY apps/webapp ./apps/webapp
 
-RUN bun install --frozen-lockfile --production --filter ./apps/collab --filter ./packages/kontexted-db
+RUN pnpm install --frozen-lockfile --prod --filter @kontexted/collab...
 
+FROM node:24.13-alpine
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/collab ./apps/collab
+COPY --from=deps /app/packages/kontexted-db ./packages/kontexted-db
+
+WORKDIR /app/apps/collab
 ENV NODE_ENV=production
 EXPOSE 8787
 
-CMD ["sh", "-c", "cd /app/apps/collab && bun run src/server.ts"]
+CMD ["./node_modules/.bin/tsx", "src/server.ts"]

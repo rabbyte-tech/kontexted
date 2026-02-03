@@ -7,27 +7,9 @@ services:
       POSTGRES_PASSWORD: kontexted
       POSTGRES_DB: kontexted
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql
       - ./postgres/init:/docker-entrypoint-initdb.d
-  keycloak:
-    image: quay.io/keycloak/keycloak:latest
-    container_name: keycloak
-    environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/kontexted
-      KC_DB_USERNAME: kontexted
-      KC_DB_PASSWORD: kontexted
-      KC_DB_SCHEMA: keycloak
-    command: start-dev --import-realm
-    ports:
-      - "127.0.0.1:8080:8080"
-    volumes:
-      - ./keycloak/dev:/opt/keycloak/data/import
-    depends_on:
-      - postgres
 volumes:
   pgdata:
