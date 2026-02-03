@@ -16,23 +16,6 @@ services:
       - webapp
       - collab
 
-  postgres:
-    image: postgres:latest
-    container_name: postgres
-    environment:
-      POSTGRES_USER: kontexted
-      POSTGRES_PASSWORD: kontexted
-      POSTGRES_DB: kontexted
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql
-      - ../postgres/init:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kontexted -d kontexted"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
   collab:
     build:
       context: ..
@@ -42,7 +25,8 @@ services:
     environment:
       COLLAB_PORT: 8787
       COLLAB_TOKEN_SECRET: 6544c2e89932a0c72daf8c42c30b021e
-      DATABASE_URL: postgresql://kontexted:kontexted@postgres:5432/kontexted
+      DATABASE_DIALECT: sqlite
+      DATABASE_URL: /data/kontexted.db
       NODE_ENV: production
     labels:
       - "traefik.enable=true"
@@ -50,9 +34,8 @@ services:
       - "traefik.http.routers.collab.entrypoints=web"
       - "traefik.http.routers.collab.service=collab"
       - "traefik.http.services.collab.loadbalancer.server.port=8787"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    volumes:
+      - sqlite-data:/data
   webapp:
     build:
       context: ..
@@ -60,8 +43,8 @@ services:
     container_name: webapp
     restart: unless-stopped
     environment:
-      DATABASE_DIALECT: postgresql
-      DATABASE_URL: postgresql://kontexted:kontexted@postgres:5432/kontexted
+      DATABASE_DIALECT: sqlite
+      DATABASE_URL: /data/kontexted.db
       BETTER_AUTH_SECRET: 2f9569d6a7081d4fc978afc430d06b80
       BETTER_AUTH_URL: http://app.localhost
       INVITE_CODE: my-secret-code
@@ -77,10 +60,11 @@ services:
     extra_hosts:
       - "collab.localhost:host-gateway"
       - "app.localhost:host-gateway"
+    volumes:
+      - sqlite-data:/data
     depends_on:
-      postgres:
-        condition: service_healthy
       collab:
         condition: service_started
+
 volumes:
-  pgdata:
+  sqlite-data:

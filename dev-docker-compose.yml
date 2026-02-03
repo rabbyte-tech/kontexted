@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:latest
-    container_name: postgres
+    container_name: postgreskx
     environment:
       POSTGRES_USER: kontexted
       POSTGRES_PASSWORD: kontexted

@@ -1,9 +1,15 @@
 import * as Y from "yjs";
 import { and, eq, gt, sql } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import { db } from "./db";
 import { noteLineBlame, notes, revisions } from "@kontexted/db";
+import type * as sqliteSchema from "@kontexted/db/schema/sqlite";
 import { getRoom } from "./y-websocket-server";
+
+type DbSchema = typeof import("@kontexted/db").schema;
+
+const dialect = process.env.DATABASE_DIALECT === "sqlite" ? "sqlite" : "postgresql";
 
 const DEBOUNCE_MS = 5000;
 
@@ -324,82 +330,175 @@ export const checkpointRoom = async (
   console.log(`[collab] Starting checkpoint for ${roomName}`);
 
   try {
-    const result = await db.transaction(async (tx) => {
-      const inserted = await tx
-        .insert(revisions)
-        .values({
-          workspaceId: state.workspaceId,
-          noteId: state.noteId,
+    const sqliteDb = db as unknown as BetterSQLite3Database<DbSchema>;
+
+    const sqliteTables = {
+      noteLineBlame: noteLineBlame as unknown as typeof sqliteSchema.noteLineBlame,
+      notes: notes as unknown as typeof sqliteSchema.notes,
+      revisions: revisions as unknown as typeof sqliteSchema.revisions,
+    };
+
+    const runCheckpointSqlite = () =>
+      sqliteDb.transaction((tx) => {
+        const inserted = tx
+          .insert(sqliteTables.revisions)
+          .values({
+            workspaceId: state.workspaceId,
+            noteId: state.noteId,
+            authorUserId,
+            content: currentContent,
+          })
+          .run();
+
+        const revisionId = Number(inserted.lastInsertRowid);
+        if (!revisionId) {
+          throw new Error("Failed to create revision");
+        }
+
+        tx
+          .update(sqliteTables.notes)
+          .set({
+            content: currentContent,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(sqliteTables.notes.id, state.noteId), eq(sqliteTables.notes.workspaceId, state.workspaceId)))
+          .run();
+
+        const existingBlame = tx
+          .select({
+            lineNumber: sqliteTables.noteLineBlame.lineNumber,
+            authorUserId: sqliteTables.noteLineBlame.authorUserId,
+            revisionId: sqliteTables.noteLineBlame.revisionId,
+            touchedAt: sqliteTables.noteLineBlame.touchedAt,
+          })
+          .from(sqliteTables.noteLineBlame)
+          .where(eq(sqliteTables.noteLineBlame.noteId, state.noteId))
+          .orderBy(sqliteTables.noteLineBlame.lineNumber)
+          .all();
+
+        const nextBlame = buildNextBlame(
+          state.lastCheckpointContent,
+          currentContent,
+          existingBlame,
           authorUserId,
-          content: currentContent,
-        })
-        .returning({ id: revisions.id });
+          revisionId
+        );
 
-      const revisionId = inserted[0]?.id;
-      if (!revisionId) {
-        throw new Error("Failed to create revision");
-      }
+        if (nextBlame.length > 0) {
+          tx
+            .insert(sqliteTables.noteLineBlame)
+            .values(
+              nextBlame.map((row) => ({
+                noteId: state.noteId,
+                lineNumber: row.lineNumber,
+                authorUserId: row.authorUserId,
+                revisionId: row.revisionId,
+                touchedAt: row.touchedAt,
+              }))
+            )
+            .onConflictDoUpdate({
+              target: [sqliteTables.noteLineBlame.noteId, sqliteTables.noteLineBlame.lineNumber],
+              set: {
+                authorUserId: sql`excluded.author_user_id`,
+                revisionId: sql`excluded.revision_id`,
+                touchedAt: sql`excluded.touched_at`,
+              },
+            })
+            .run();
+        }
 
-      await tx
-        .update(notes)
-        .set({
-          content: currentContent,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(notes.id, state.noteId), eq(notes.workspaceId, state.workspaceId)));
+        tx
+          .delete(sqliteTables.noteLineBlame)
+          .where(and(eq(sqliteTables.noteLineBlame.noteId, state.noteId), gt(sqliteTables.noteLineBlame.lineNumber, nextBlame.length)))
+          .run();
 
-      const existingBlame = await tx
-        .select({
-          lineNumber: noteLineBlame.lineNumber,
-          authorUserId: noteLineBlame.authorUserId,
-          revisionId: noteLineBlame.revisionId,
-          touchedAt: noteLineBlame.touchedAt,
-        })
-        .from(noteLineBlame)
-        .where(eq(noteLineBlame.noteId, state.noteId))
-        .orderBy(noteLineBlame.lineNumber);
+        console.log(`[collab] Checkpoint saved for ${roomName}: revision ${revisionId}, ${currentContent.length} chars, ${nextBlame.length} blame entries`);
 
-      const nextBlame = buildNextBlame(
-        state.lastCheckpointContent,
-        currentContent,
-        existingBlame,
-        authorUserId,
-        revisionId
-      );
+        return {
+          revisionId,
+          blame: nextBlame,
+        };
+      });
 
-      if (nextBlame.length > 0) {
+    const runCheckpointPostgres = () =>
+      db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(revisions)
+          .values({
+            workspaceId: state.workspaceId,
+            noteId: state.noteId,
+            authorUserId,
+            content: currentContent,
+          })
+          .returning({ id: revisions.id });
+
+        const revisionId = inserted[0]?.id;
+        if (!revisionId) {
+          throw new Error("Failed to create revision");
+        }
+
         await tx
-          .insert(noteLineBlame)
-          .values(
-            nextBlame.map((row) => ({
-              noteId: state.noteId,
-              lineNumber: row.lineNumber,
-              authorUserId: row.authorUserId,
-              revisionId: row.revisionId,
-              touchedAt: row.touchedAt,
-            }))
-          )
-          .onConflictDoUpdate({
-            target: [noteLineBlame.noteId, noteLineBlame.lineNumber],
-            set: {
-              authorUserId: sql`excluded.author_user_id`,
-              revisionId: sql`excluded.revision_id`,
-              touchedAt: sql`excluded.touched_at`,
-            },
-          });
-      }
+          .update(notes)
+          .set({
+            content: currentContent,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(notes.id, state.noteId), eq(notes.workspaceId, state.workspaceId)));
 
-      await tx
-        .delete(noteLineBlame)
-        .where(and(eq(noteLineBlame.noteId, state.noteId), gt(noteLineBlame.lineNumber, nextBlame.length)));
+        const existingBlame = await tx
+          .select({
+            lineNumber: noteLineBlame.lineNumber,
+            authorUserId: noteLineBlame.authorUserId,
+            revisionId: noteLineBlame.revisionId,
+            touchedAt: noteLineBlame.touchedAt,
+          })
+          .from(noteLineBlame)
+          .where(eq(noteLineBlame.noteId, state.noteId))
+          .orderBy(noteLineBlame.lineNumber);
 
-      console.log(`[collab] Checkpoint saved for ${roomName}: revision ${revisionId}, ${currentContent.length} chars, ${nextBlame.length} blame entries`);
+        const nextBlame = buildNextBlame(
+          state.lastCheckpointContent,
+          currentContent,
+          existingBlame,
+          authorUserId,
+          revisionId
+        );
 
-      return {
-        revisionId,
-        blame: nextBlame,
-      };
-    });
+        if (nextBlame.length > 0) {
+          await tx
+            .insert(noteLineBlame)
+            .values(
+              nextBlame.map((row) => ({
+                noteId: state.noteId,
+                lineNumber: row.lineNumber,
+                authorUserId: row.authorUserId,
+                revisionId: row.revisionId,
+                touchedAt: row.touchedAt,
+              }))
+            )
+            .onConflictDoUpdate({
+              target: [noteLineBlame.noteId, noteLineBlame.lineNumber],
+              set: {
+                authorUserId: sql`excluded.author_user_id`,
+                revisionId: sql`excluded.revision_id`,
+                touchedAt: sql`excluded.touched_at`,
+              },
+            });
+        }
+
+        await tx
+          .delete(noteLineBlame)
+          .where(and(eq(noteLineBlame.noteId, state.noteId), gt(noteLineBlame.lineNumber, nextBlame.length)));
+
+        console.log(`[collab] Checkpoint saved for ${roomName}: revision ${revisionId}, ${currentContent.length} chars, ${nextBlame.length} blame entries`);
+
+        return {
+          revisionId,
+          blame: nextBlame,
+        };
+      });
+
+    const result = dialect === "sqlite" ? runCheckpointSqlite() : await runCheckpointPostgres();
 
     state.lastCheckpointContent = currentContent;
     state.lastSavedAt = new Date();

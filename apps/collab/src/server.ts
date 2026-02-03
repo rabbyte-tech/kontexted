@@ -148,7 +148,6 @@ const wsHandler = upgradeWebSocket(async (c) => {
 
         yText.observe(() => {
           const content = room.getText("content").toString();
-          console.log(`[server] Content changed in ${roomName}, length: ${content.length}`);
           if (room.userId) {
             void markRoomActivity(roomName!, room.userId).catch((error) => {
               console.warn("Failed to mark activity", error);

@@ -37,10 +37,41 @@ This project was migrated from Bun to Node.js 24.13 with pnpm package manager in
 - No lint script is configured for `apps/collab` or `packages/kontexted-db`.
 
 ## Database Commands (webapp)
-- Generate migrations: `pnpm --filter @kontexted/webapp db:generate`.
-- Run migrations: `pnpm --filter @kontexted/webapp db:migrate` or `pnpm db:migrate` (root).
-- Push schema: `pnpm --filter @kontexted/webapp db:push`.
-- Studio: `pnpm --filter @kontexted/webapp db:studio`.
+
+The webapp supports both PostgreSQL and SQLite. Use the `DATABASE_DIALECT` environment variable to select the dialect.
+
+### General Commands (uses dialect from .env)
+
+- Generate migrations: `pnpm --filter @kontexted/webapp db:generate`
+- Run migrations: `pnpm --filter @kontexted/webapp db:migrate` or `pnpm db:migrate` (root)
+- Push schema: `pnpm --filter @kontexted/webapp db:push`
+- Studio: `pnpm --filter @kontexted/webapp db:studio`
+
+### PostgreSQL-Specific Commands
+
+- Generate migrations: `DATABASE_DIALECT=postgresql pnpm --filter @kontexted/webapp db:generate`
+- Run migrations: `DATABASE_DIALECT=postgresql pnpm --filter @kontexted/webapp db:migrate`
+- Studio: `DATABASE_DIALECT=postgresql pnpm --filter @kontexted/webapp db:studio`
+
+### SQLite-Specific Commands
+
+- Generate migrations: `DATABASE_DIALECT=sqlite pnpm --filter @kontexted/webapp db:generate`
+- Run migrations: `DATABASE_DIALECT=sqlite pnpm --filter @kontexted/webapp db:migrate`
+- Studio: `DATABASE_DIALECT=sqlite pnpm --filter @kontexted/webapp db:studio`
+
+### Custom Migration Script
+
+The webapp uses a custom migration script at `apps/webapp/src/db/migrate.mjs` that supports both dialects:
+- Detects `DATABASE_DIALECT` environment variable
+- Uses PostgreSQL or SQLite migrator accordingly
+- Reads migrations from the appropriate directory (`migrations/postgresql` or `migrations/sqlite`)
+
+### Dual-Dialect Setup
+
+For detailed information on setting up dual-dialect support, see:
+- `docs/sqlite.md` - Complete SQLite + PostgreSQL dual-dialect specification
+- `docs/sqlite/plan.md` - Implementation plan with file-by-file tasks
+- `docs/sqlite/typescript-notes.md` - TypeScript considerations for dual-dialect Drizzle
 
 ## Test Commands
 - No test runner is configured in this repo (no `test` scripts or test files).
@@ -66,7 +97,7 @@ This project was migrated from Bun to Node.js 24.13 with pnpm package manager in
 
 ## Formatting Conventions
 - Indentation is 2 spaces throughout the codebase.
-- Semicolon usage is mixed; match the file’s existing style.
+- Semicolon usage is mixed; match the file's existing style.
 - Shadcn-style UI components omit semicolons and favor compact formatting.
 - Next.js app and API files generally include semicolons; follow local norms.
 - Quote style varies (single vs double); keep existing file style.
