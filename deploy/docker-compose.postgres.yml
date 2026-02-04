@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:latest
+    container_name: kontexted-postgres-db
+    environment:
+      POSTGRES_USER: kontexted
+      POSTGRES_PASSWORD: kontexted
+      POSTGRES_DB: kontexted
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kontexted -d kontexted"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  kontexted:
+    build:
+      context: ..
+      dockerfile: apps/Dockerfile
+    container_name: kontexted-postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      DATABASE_DIALECT: postgresql
+      DATABASE_URL: postgresql://kontexted:kontexted@postgres:5432/kontexted
+      AUTH_METHOD: email-password
+      INVITE_CODE: docker-dev
+      BETTER_AUTH_SECRET: 2f9569d6a7081d4fc978afc430d06b80
+      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_TRUSTED_ORIGINS: http://localhost:3000
+      COLLAB_TOKEN_SECRET: 6544c2e89932a0c72daf8c42c30b021e
+      PORT: 3000
+      HOST: 0.0.0.0
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

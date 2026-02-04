@@ -1,11 +1,7 @@
-# Kontexted.ai
+# Kontexted
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Status: Alpha](https://img.shields.io/badge/Status-Alpha%2FEarly%20Access-orange.svg)](https://github.com/kontexted/kontexted)
-
-| ![img1](https://github.com/user-attachments/assets/23d8af50-5d75-4d45-ab07-c31aa934c9f3) | ![img2](https://github.com/user-attachments/assets/2ae5dcfe-7f67-4ce1-9bb8-e2dd114045df) |
-| -- | -- |
-
 
 **Collaborative markdown knowledge base for AI-assisted development.**
 
@@ -17,7 +13,7 @@ Kontexted solves the problem of fragmented markdown context files when working w
 
 When your team uses AI coding assistants, you often end up with:
 
-- **Scattered context files** - `docs/` directories full of LLM-generated specs, architecture docs, and implementation guides
+- **Scattered context files** - Directories full of LLM-generated specs, architecture docs, and implementation guides
 - **Sync issues** - Keeping documentation up-to-date across multiple repositories
 - **Collaboration friction** - Team members working on stale versions of specs
 - **No enforced standards** - Inconsistent documentation structure across projects
@@ -33,11 +29,11 @@ Kontexted centralizes all this knowledge into one place, making it easy to share
 Kontexted is a web-based, real-time collaborative markdown editor designed specifically for managing AI context and project knowledge. It includes:
 
 - **Workspaces & Folders** - Organize notes hierarchically by project or team
-- **Real-time Collaboration** - Multiple users can edit simultaneously with CRDT-based conflict resolution (optional)
-- **MCP Integration** - AI assistants can query your notes directly through [kontexted-mcp-cli](https://github.com/kontexted/kontexted-mcp-cli)
+- **Real-time Collaboration** - Multiple users can edit simultaneously with CRDT-based conflict resolution
+- **MCP Integration** - AI assistants can query your notes directly through the built-in MCP server
 - **Version History** - Track every change with revision history and line-by-line blame tracking
 - **Secure Authentication** - Email/password with invite codes (optional Keycloak OAuth 2.0)
-- **Manual-Save Mode** - Works standalone without real-time collaboration server
+- **Flexible Database** - SQLite for local/single-user mode, PostgreSQL for multi-user deployments
 
 ---
 
@@ -47,12 +43,12 @@ Kontexted is a web-based, real-time collaborative markdown editor designed speci
 |---------|-------------|
 | **Workspaces** | Isolated environments for different projects or teams |
 | **Nested Folders** | Organize notes in hierarchical structures |
-| **Real-time Editing** | Collaborate with teammates using Yjs CRDT technology (optional) |
-| **Manual Save** | Standalone mode without real-time collaboration |
+| **Real-time Editing** | Collaborate with teammates using Yjs CRDT technology |
 | **MCP Server** | Built-in MCP endpoint for AI assistant integration |
 | **Version Control** | Complete revision history with author attribution |
 | **Blame Tracking** | See who wrote each line and when |
 | **Authentication** | Email/password with invite codes (optional Keycloak OAuth 2.0) |
+| **Flexible Backend** | SQLite for simple deployments, PostgreSQL for scale |
 
 ---
 
@@ -65,42 +61,47 @@ Get Kontexted running in minutes with Docker Compose.
 - Docker Engine 20.10+
 - Docker Compose 2.0+
 
-### Start Kontexted
+### Start Kontexted (SQLite - Simplest)
 
 ```bash
 git clone https://github.com/kontexted/kontexted.git
 cd kontexted
-docker compose up -d
+docker-compose up -d
+```
+
+### Start Kontexted (PostgreSQL - Multi-user)
+
+```bash
+git clone https://github.com/kontexted/kontexted.git
+cd kontexted
+docker-compose -f deploy/docker-compose.postgres.yml up -d
 ```
 
 ### Access the Application
 
 | Service | URL |
 |---------|-----|
-| Webapp | http://app.localhost |
+| Webapp | http://localhost:3000 |
 
 ### First Steps
 
-1. Sign up at http://app.localhost with the invite code set in your environment
+1. Sign up at http://localhost:3000 with the invite code (default: `docker-dev` or set via `INVITE_CODE`)
 2. Create your first workspace
 3. Add folders and notes to document your project
 4. Share with team members and start collaborating!
-
-**Note:** By default, Kontexted uses email/password authentication with invite codes. Keycloak OAuth 2.0 can be optionally configured for enterprise deployments.
 
 ---
 
 ## Using Kontexted with AI Assistants
 
-Kontexted provides a built-in MCP (Model Context Protocol) server that allows AI coding assistants to query your notes directly.
+Kontexted includes a built-in MCP (Model Context Protocol) server that allows AI coding assistants to query your notes directly.
 
-For AI assistant integration, use the [kontexted-mcp-cli](https://github.com/kontexted/kontexted-mcp-cli). The CLI handles:
+The MCP server is available at `http://localhost:3000/mcp` and supports:
 
-- Profile management for multiple Kontexted instances
-- Project-specific configurations
-- Connecting AI assistants (opencode, Claude Code, etc.) to your Kontexted server
+- **Tools**: Query and search your knowledge base
+- **Resources**: Access notes and workspaces programmatically
 
-See the [kontexted-mcp-cli repository](https://github.com/kontexted/kontexted-mcp-cli) for installation and usage instructions.
+Configure your AI assistant to connect to the MCP endpoint for seamless context retrieval.
 
 ---
 
@@ -108,84 +109,59 @@ See the [kontexted-mcp-cli repository](https://github.com/kontexted/kontexted-mc
 
 ### Docker Deployment
 
-The `docker-compose.yml` includes all required services:
+The repository includes multiple Docker Compose configurations:
 
-| Service | Purpose |
-|---------|---------|
-| `postgres` | PostgreSQL database |
-| `traefik` | Reverse proxy and load balancer |
-| `webapp` | Next.js application |
-| `collab` | WebSocket collaboration server |
-| `keycloak` | Optional OAuth 2.0 identity provider |
-
-**Optional: Use SQLite instead of PostgreSQL**
-
-For a local SQLite setup, use `compose/local-build-docker-compose-sqlite.yml` instead of the default `docker-compose.yml`. This uses the required `DATABASE_DIALECT=sqlite` and a mounted SQLite data volume for the webapp and collab services.
-
-**Optional: Run without real-time collaboration**
-
-For solo or local use, you can run Kontexted without the collab server. Manual-save mode is enabled automatically:
-
-- PostgreSQL without collab: `compose/local-build-docker-compose-postgres-no-collab.yml`
-- SQLite without collab: `compose/local-build-docker-compose-sqlite-no-collab.yml`
-
-These compose files omit the collab and keycloak services, leaving `PUBLIC_COLLAB_URL` unset to enable manual-save mode.
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | SQLite mode (default, simplest) |
+| `deploy/docker-compose.sqlite.yml` | SQLite with explicit configuration |
+| `deploy/docker-compose.postgres.yml` | PostgreSQL for multi-user deployments |
+| `deploy/docker-compose.postgres-keycloak.yml` | PostgreSQL + Keycloak OAuth |
 
 #### Environment Variables
 
-The following environment variables can be configured in `docker-compose.yml`:
-
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_DIALECT` | Database dialect (`postgresql` or `sqlite`) | Required |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://kontexted:kontexted@postgres:5432/kontexted` |
-| `AUTH_METHOD` | Authentication method (`email-password` or `keycloak`) | `email-password` (auto-detects if not set) |
-| `AUTH_KEYCLOAK_ID` | OAuth client ID (Keycloak only) | `kontexted-webapp` |
-| `AUTH_KEYCLOAK_SECRET` | OAuth client secret (Keycloak only) | `kontexted-local-secret` |
-| `AUTH_KEYCLOAK_ISSUER` | Keycloak issuer URL (Keycloak only) | `http://keycloak.localhost/realms/kontexted` |
-| `BETTER_AUTH_SECRET` | Session encryption secret | `2f9569d6a7081d4fc978afc430d06b80` |
-| `BETTER_AUTH_URL` | Base URL for auth callbacks | `http://app.localhost` |
-| `INVITE_CODE` | Invite code required for email/password sign-up | Empty (sign-up disabled) |
-| `COLLAB_TOKEN_SECRET` | Secret for collab server tokens (optional) | `6544c2e89932a0c72daf8c42c30b021e` |
-| `COLLAB_URL` | Internal collab server URL (optional) | `http://collab:8787` |
-| `PUBLIC_COLLAB_URL` | Public collab server URL (optional - unset for manual-save mode) | `ws://collab.localhost` |
+| `DATABASE_DIALECT` | Database dialect (`sqlite` or `postgresql`) | `sqlite` |
+| `DATABASE_URL` | Database connection string | `./data/kontexted.db` or PostgreSQL connection |
+| `AUTH_METHOD` | Authentication method (`email-password` or `keycloak`) | `email-password` |
+| `AUTH_KEYCLOAK_ID` | OAuth client ID (Keycloak only) | - |
+| `AUTH_KEYCLOAK_SECRET` | OAuth client secret (Keycloak only) | - |
+| `AUTH_KEYCLOAK_ISSUER` | Keycloak issuer URL (Keycloak only) | - |
+| `BETTER_AUTH_SECRET` | Session encryption secret | Required |
+| `BETTER_AUTH_URL` | Base URL for auth callbacks | `http://localhost:3000` |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | Comma-separated trusted origins | `http://localhost:3000` |
+| `INVITE_CODE` | Invite code required for email/password sign-up | Required for email-password |
+| `COLLAB_TOKEN_SECRET` | Secret for WebSocket collaboration tokens | Required |
+| `PORT` | Server port | `3000` |
+| `HOST` | Server bind host | `0.0.0.0` |
+| `CORS_ORIGINS` | Comma-separated allowed CORS origins | - |
+| `LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`) | `info` |
 
-**⚠️ Important:** Change all secrets and passwords before deploying to production!
+**⚠️ Important:** Change all secrets before deploying to production!
 
 #### Production Setup
 
-For production deployment:
-
 1. **Update secrets** - Replace all default secrets with cryptographically secure values
+   - Set `INVITE_CODE` to a secure code to control who can sign up
+   - Update `BETTER_AUTH_SECRET`, `COLLAB_TOKEN_SECRET` to secure random values
 
-    **For email/password authentication (default):**
-    - Set `INVITE_CODE` to a secure code to control who can sign up
-    - Update `BETTER_AUTH_SECRET`, `COLLAB_TOKEN_SECRET` to cryptographically secure values
+2. **For Keycloak OAuth 2.0 (optional):**
+   - Configure Keycloak realm and client
+   - Set `AUTH_METHOD=keycloak`
+   - Update `AUTH_KEYCLOAK_ID`, `AUTH_KEYCLOAK_SECRET`, `AUTH_KEYCLOAK_ISSUER`
 
-    **For Keycloak OAuth 2.0 (optional):**
-    - Edit `keycloak/full/kontexted-realm.json` to change default credentials:
-      - **OAuth Client Secret** (line 22): Change `"secret": "kontexted-local-secret"` to a secure value
-      - **User Passwords** (lines 36, 51): Change `"value": "password"` for users
-      - **Admin Password**: Set `KEYCLOAK_ADMIN_PASSWORD` in `docker-compose.yml`
-    - Set `AUTH_METHOD=keycloak` in `docker-compose.yml`
-    - Update environment variables:
-      - `AUTH_KEYCLOAK_SECRET` - Must match the OAuth client secret in realm JSON
-      - `COLLAB_TOKEN_SECRET` - Use a cryptographically secure secret
-      - `BETTER_AUTH_SECRET` - Use a cryptographically secure secret
-    - Restart the Keycloak container: `docker compose restart keycloak`
-
-2. **Enable HTTPS** - Configure Traefik with SSL/TLS certificates
-3. **Persistent storage** - Ensure `pgdata` volume is backed up regularly
-4. **Keycloak production mode** (if using Keycloak): Set `KC_HOSTNAME_STRICT: true` and use a real domain
-5. **Firewall rules** - Restrict database and internal ports
+3. **Persistent storage** - Ensure database volumes are backed up regularly
+4. **HTTPS** - Use a reverse proxy (nginx, Traefik, etc.) with SSL/TLS certificates
+5. **Firewall rules** - Restrict access to internal ports
 
 ### Manual / Local Development
 
 #### Prerequisites
 
-- Node.js 24.13+
-- pnpm
-- PostgreSQL 14+
+- [Bun](https://bun.sh/) 1.0+ (for server)
+- Node.js 20+ (for client build)
+- PostgreSQL 14+ (optional, for PostgreSQL mode)
 
 #### Setup
 
@@ -194,120 +170,140 @@ For production deployment:
 ```bash
 git clone https://github.com/kontexted/kontexted.git
 cd kontexted
-pnpm install
+make install
 ```
 
-2. **Configure PostgreSQL:**
+2. **Configure environment:**
 
-Create a database and user:
+Copy and configure environment files:
 
-```sql
+```bash
+# Server environment
+cp apps/server/.env.example apps/server/.env
+# Edit apps/server/.env with your settings
+```
+
+For SQLite (default):
+```bash
+# apps/server/.env
+DATABASE_DIALECT=sqlite
+DATABASE_URL=./data/kontexted.db
+BETTER_AUTH_SECRET=your-secret
+BETTER_AUTH_URL=http://localhost:4242
+BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:5173
+INVITE_CODE=dev-code
+COLLAB_TOKEN_SECRET=dev-secret
+```
+
+For PostgreSQL:
+```bash
+# Create database first
 CREATE DATABASE kontexted;
 CREATE USER kontexted WITH PASSWORD 'kontexted';
 GRANT ALL PRIVILEGES ON DATABASE kontexted TO kontexted;
-```
 
-3. **Set environment variables:**
-
-Copy `.env.example` files and configure:
-
-```bash
-# apps/webapp/.env
-DATABASE_URL=postgresql://kontexted:kontexted@localhost:5432/kontexted
-BETTER_AUTH_SECRET=change-me
-BETTER_AUTH_URL=http://localhost:3000
-INVITE_CODE=dev-invite-code
-COLLAB_TOKEN_SECRET=dev-secret
-COLLAB_URL=http://localhost:8787
-PUBLIC_COLLAB_URL=http://localhost:8787
-
-# apps/collab/.env
-COLLAB_TOKEN_SECRET=dev-secret
+# apps/server/.env
+DATABASE_DIALECT=postgresql
 DATABASE_URL=postgresql://kontexted:kontexted@localhost:5432/kontexted
 ```
 
-**Optional: Configure Keycloak for OAuth 2.0**
-
-To use Keycloak instead of email/password:
+3. **Run database migrations:**
 
 ```bash
-# apps/webapp/.env (add these)
-AUTH_METHOD=keycloak
-AUTH_KEYCLOAK_ID=kontexted-webapp
-AUTH_KEYCLOAK_SECRET=kontexted-local-secret
-AUTH_KEYCLOAK_ISSUER=http://localhost:8080/realms/kontexted
+make db-migrate
 ```
 
-Import the pre-configured realm from `keycloak/full/kontexted-realm.json` into your Keycloak instance.
-
-**Optional: Use SQLite instead of PostgreSQL**
-
-SQLite is intended for lightweight local development. PostgreSQL remains the default for production.
-
-To opt out of PostgreSQL locally, set the following in your `.env` files:
+4. **Start development servers:**
 
 ```bash
-# apps/webapp/.env
-DATABASE_DIALECT=sqlite
-DATABASE_URL=./data/kontexted.db
+# Start both client and server
+make dev
 
-# apps/collab/.env
-DATABASE_DIALECT=sqlite
-DATABASE_URL=../webapp/data/kontexted.db
+# Or start individually:
+make dev-client  # Terminal 1 - Vite dev server (port 5173)
+make dev-server  # Terminal 2 - Bun server (port 4242)
 ```
 
-5. **Run database migrations:**
+5. **Access the application:**
 
-```bash
-pnpm db:migrate
-```
-
-6. **Start services:**
-
-```bash
-# Terminal 1 - Start webapp
-pnpm dev:webapp
-
-# Terminal 2 - Start collab server (optional for solo/local use)
-pnpm dev:collab
-```
-
-Access the webapp at http://localhost:3000.
-
-**Note:** The collab server is optional for solo or local development. When not running, Kontexted operates in manual-save mode without real-time collaboration. You can skip `pnpm dev:collab` and omit `COLLAB_*` environment variables for standalone usage.
+- Client: http://localhost:5173
+- Server API: http://localhost:4242
 
 ---
 
 ## Architecture
 
-Kontexted is a monorepo managed by pnpm workspaces with the following structure:
+Kontexted is organized as a monorepo with the following structure:
 
 ```
 kontexted/
 ├── apps/
-│   ├── webapp/          # Next.js 16 (React 19, TypeScript)
-│   └── collab/         # Node.js + Hono (WebSocket server)
-└── packages/
-    └── kontexted-db/   # Drizzle ORM schema
+│   ├── client/          # Vite + React 19 + TypeScript + Tailwind CSS
+│   └── server/          # Hono + Bun + TypeScript + Drizzle ORM
+├── deploy/              # Docker Compose configurations
+│   ├── docker-compose.postgres.yml
+│   ├── docker-compose.sqlite.yml
+│   └── docker-compose.postgres-keycloak.yml
+├── data/                # SQLite database storage (gitignored)
+└── Makefile             # Development commands
 ```
 
 ### Components
 
 | Component | Tech Stack | Purpose |
 |-----------|------------|---------|
-| **Webapp** | Next.js 16, React 19, Tailwind CSS | UI, HTTP API, MCP server |
-| **Collab** | Node.js, Hono, Yjs | Real-time collaboration via WebSocket |
-| **Database** | PostgreSQL (default) or SQLite (local dev), Drizzle ORM | Persistent data storage |
-| **Auth** | Better Auth, Keycloak | OAuth 2.0 authentication |
-| **Reverse Proxy** | Traefik | Load balancing and routing |
+| **Client** | Vite, React 19, TypeScript, Tailwind CSS | UI, markdown editor, real-time collaboration |
+| **Server** | Hono, Bun, Drizzle ORM | HTTP API, WebSocket collab, MCP server, auth |
+| **Database** | SQLite (local) or PostgreSQL (multi-user) | Persistent data storage |
+| **Auth** | Better Auth | Session-based authentication |
 
 ### Tech Stack
 
-- **Frontend:** Next.js 16, React 19, TypeScript, Tailwind CSS, shadcn/ui
-- **Backend:** Node.js, Hono, Yjs, Better Auth
-- **Database:** PostgreSQL (default) or SQLite (local dev), Drizzle ORM
-- **Auth:** Better Auth (email/password or optional Keycloak OAuth 2.0)
-- **Infrastructure:** Docker, Docker Compose, Traefik
+- **Frontend:**
+  - Vite 6
+  - React 19
+  - TypeScript 5
+  - Tailwind CSS 4
+  - TanStack Router (file-based routing)
+  - TanStack Query (data fetching)
+  - Zustand (state management)
+  - CodeMirror 6 (markdown editor)
+  - Yjs (CRDT for real-time collaboration)
+  - shadcn/ui components (Radix UI primitives)
+
+- **Backend:**
+  - Hono (web framework)
+  - Bun runtime
+  - Drizzle ORM
+  - Better Auth (authentication)
+  - Yjs (WebSocket collaboration)
+  - MCP SDK (Model Context Protocol)
+
+- **Infrastructure:**
+  - Docker, Docker Compose
+  - SQLite or PostgreSQL
+
+---
+
+## Development Commands
+
+Use the Makefile for common development tasks:
+
+| Command | Description |
+|---------|-------------|
+| `make help` | Show all available commands |
+| `make install` | Install dependencies for client and server |
+| `make dev` | Start both client and server in development mode |
+| `make dev-client` | Start client only (Vite dev server) |
+| `make dev-server` | Start server only (Bun with watch) |
+| `make build` | Build both client and server for production |
+| `make start` | Start production server |
+| `make lint` | Run linter |
+| `make db-generate` | Generate database migrations |
+| `make db-migrate` | Run database migrations |
+| `make db-studio` | Open Drizzle Studio |
+| `make docker-build` | Build Docker image |
+| `make clean` | Remove build artifacts and node_modules |
 
 ---
 
@@ -321,4 +317,3 @@ kontexted/
 
 - [GitHub Repository](https://github.com/kontexted/kontexted)
 - [Issues & Bug Reports](https://github.com/kontexted/kontexted/issues)
-- [kontexted-mcp-cli](https://github.com/kontexted/kontexted-mcp-cli) - AI assistant integration

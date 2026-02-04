@@ -1,0 +1,30 @@
+-- =============================================================================
+-- PostgreSQL Initialization Script for Kontexted + Keycloak Setup
+-- =============================================================================
+--
+-- Purpose:
+--   This script prepares the PostgreSQL database for the Kontexted application
+--   when using Keycloak for authentication. It sets up separate schemas for
+--   Kontexted and Keycloak to avoid table name conflicts.
+--
+-- Schema Setup:
+--   - public:      Kontexted tables (created by Drizzle ORM migrations)
+--   - keycloak:    Keycloak tables (auto-created by Keycloak on startup)
+--
+-- Execution:
+--   This script is automatically executed by PostgreSQL's docker-entrypoint-initdb.d
+--   mechanism during initial database creation (only runs once when the database
+--   is first created).
+--
+-- Notes:
+--   - Kontexted tables are NOT created here; they are managed by Drizzle ORM
+--     migrations via `node dist/db/migrate.js` (run by docker-entrypoint.sh)
+--   - Keycloak will automatically create its tables in the keycloak schema
+--     when it starts up (configured via KC_DB_SCHEMA=keycloak)
+--   - The kontexted user owns both schemas and has full permissions
+-- =============================================================================
+
+-- Create the keycloak schema for Keycloak's tables
+-- The AUTHORIZATION clause grants ownership to the kontexted user
+-- This allows Keycloak (using kontexted credentials) to create its tables
+CREATE SCHEMA IF NOT EXISTS keycloak AUTHORIZATION kontexted;

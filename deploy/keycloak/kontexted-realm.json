@@ -1,0 +1,57 @@
+{
+  "realm": "kontexted",
+  "displayName": "Kontexted",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "clients": [
+    {
+      "clientId": "kontexted-webapp",
+      "name": "Kontexted Webapp",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://app.localhost/api/auth/oauth2/callback/keycloak"],
+      "webOrigins": ["http://app.localhost"],
+      "rootUrl": "http://app.localhost",
+      "baseUrl": "/",
+      "adminUrl": "http://app.localhost",
+      "secret": "kontexted-local-secret"
+    }
+  ],
+  "users": [
+    {
+      "username": "user1",
+      "firstName": "User",
+      "lastName": "One",
+      "email": "user1@kontexted.local",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "user2",
+      "firstName": "User",
+      "lastName": "Two",
+      "email": "user2@kontexted.local",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

@@ -14,8 +14,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  WEBAPP_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/webapp
-  COLLAB_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/collab
+  KONTEXTED_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/kontexted
 
 jobs:
   build-and-push:
@@ -43,41 +42,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Webapp version from package.json
-        id: webapp-version
+      - name: Extract Kontexted version from package.json
+        id: kontexted-version
         run: |
-          VERSION=$(node -e "console.log(require('./apps/webapp/package.json').version)")
+          VERSION=$(node -e "console.log(require('./apps/server/package.json').version)")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Extract Collab version from package.json
-        id: collab-version
-        run: |
-          VERSION=$(node -e "console.log(require('./apps/collab/package.json').version)")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Build and push Webapp
+      - name: Build and push Kontexted
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ./apps/webapp/Dockerfile
+          context: ./apps/server
+          file: ./apps/server/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.push_images == 'true') }}
           tags: |
-            ${{ env.WEBAPP_IMAGE_NAME }}:${{ steps.webapp-version.outputs.version }}
-            ${{ env.WEBAPP_IMAGE_NAME }}:latest
+            ${{ env.KONTEXTED_IMAGE_NAME }}:${{ steps.kontexted-version.outputs.version }}
+            ${{ env.KONTEXTED_IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Build and push Collab
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./apps/collab/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.push_images == 'true') }}
-          tags: |
-            ${{ env.COLLAB_IMAGE_NAME }}:${{ steps.collab-version.outputs.version }}
-            ${{ env.COLLAB_IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
