@@ -33,10 +33,11 @@ Kontexted centralizes all this knowledge into one place, making it easy to share
 Kontexted is a web-based, real-time collaborative markdown editor designed specifically for managing AI context and project knowledge. It includes:
 
 - **Workspaces & Folders** - Organize notes hierarchically by project or team
-- **Real-time Collaboration** - Multiple users can edit simultaneously with CRDT-based conflict resolution
+- **Real-time Collaboration** - Multiple users can edit simultaneously with CRDT-based conflict resolution (optional)
 - **MCP Integration** - AI assistants can query your notes directly through [kontexted-mcp-cli](https://github.com/kontexted/kontexted-mcp-cli)
 - **Version History** - Track every change with revision history and line-by-line blame tracking
 - **Secure Authentication** - Email/password with invite codes (optional Keycloak OAuth 2.0)
+- **Manual-Save Mode** - Works standalone without real-time collaboration server
 
 ---
 
@@ -46,7 +47,8 @@ Kontexted is a web-based, real-time collaborative markdown editor designed speci
 |---------|-------------|
 | **Workspaces** | Isolated environments for different projects or teams |
 | **Nested Folders** | Organize notes in hierarchical structures |
-| **Real-time Editing** | Collaborate with teammates using Yjs CRDT technology |
+| **Real-time Editing** | Collaborate with teammates using Yjs CRDT technology (optional) |
+| **Manual Save** | Standalone mode without real-time collaboration |
 | **MCP Server** | Built-in MCP endpoint for AI assistant integration |
 | **Version Control** | Complete revision history with author attribution |
 | **Blame Tracking** | See who wrote each line and when |
@@ -120,6 +122,15 @@ The `docker-compose.yml` includes all required services:
 
 For a local SQLite setup, use `compose/local-build-docker-compose-sqlite.yml` instead of the default `docker-compose.yml`. This uses the required `DATABASE_DIALECT=sqlite` and a mounted SQLite data volume for the webapp and collab services.
 
+**Optional: Run without real-time collaboration**
+
+For solo or local use, you can run Kontexted without the collab server. Manual-save mode is enabled automatically:
+
+- PostgreSQL without collab: `compose/local-build-docker-compose-postgres-no-collab.yml`
+- SQLite without collab: `compose/local-build-docker-compose-sqlite-no-collab.yml`
+
+These compose files omit the collab and keycloak services, leaving `PUBLIC_COLLAB_URL` unset to enable manual-save mode.
+
 #### Environment Variables
 
 The following environment variables can be configured in `docker-compose.yml`:
@@ -135,9 +146,9 @@ The following environment variables can be configured in `docker-compose.yml`:
 | `BETTER_AUTH_SECRET` | Session encryption secret | `2f9569d6a7081d4fc978afc430d06b80` |
 | `BETTER_AUTH_URL` | Base URL for auth callbacks | `http://app.localhost` |
 | `INVITE_CODE` | Invite code required for email/password sign-up | Empty (sign-up disabled) |
-| `COLLAB_TOKEN_SECRET` | Secret for collab server tokens | `6544c2e89932a0c72daf8c42c30b021e` |
-| `COLLAB_URL` | Internal collab server URL | `http://collab:8787` |
-| `PUBLIC_COLLAB_URL` | Public collab server URL | `ws://collab.localhost` |
+| `COLLAB_TOKEN_SECRET` | Secret for collab server tokens (optional) | `6544c2e89932a0c72daf8c42c30b021e` |
+| `COLLAB_URL` | Internal collab server URL (optional) | `http://collab:8787` |
+| `PUBLIC_COLLAB_URL` | Public collab server URL (optional - unset for manual-save mode) | `ws://collab.localhost` |
 
 **⚠️ Important:** Change all secrets and passwords before deploying to production!
 
@@ -257,11 +268,13 @@ pnpm db:migrate
 # Terminal 1 - Start webapp
 pnpm dev:webapp
 
-# Terminal 2 - Start collab server
+# Terminal 2 - Start collab server (optional for solo/local use)
 pnpm dev:collab
 ```
 
 Access the webapp at http://localhost:3000.
+
+**Note:** The collab server is optional for solo or local development. When not running, Kontexted operates in manual-save mode without real-time collaboration. You can skip `pnpm dev:collab` and omit `COLLAB_*` environment variables for standalone usage.
 
 ---
 
