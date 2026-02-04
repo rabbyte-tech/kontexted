@@ -37,7 +37,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { getPublicEnv } from "@/public-env";
 
-const env = getPublicEnv()
+const env = getPublicEnv();
 
 const authClient = createAuthClient({
   plugins: [genericOAuthClient()],
@@ -46,6 +46,9 @@ const authClient = createAuthClient({
 type ConnectionStatus = "connected" | "connecting" | "disconnected";
 
 type ViewMode = "code" | "split" | "preview";
+
+// Determine if running in manual-save mode (no collab URL configured)
+const isManualMode = !env.PUBLIC_COLLAB_URL;
 
 type SessionData =
   | {
@@ -447,52 +450,90 @@ export default function NoteEditor({
     let isActive = true;
     const abortController = new AbortController();
 
-    const fetchToken = async () => {
-      const response = await fetch("/api/collab/token", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ workspaceId: workspaceSlug, noteId: notePublicId }),
-        signal: abortController.signal,
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        const message =
-          typeof payload?.error === "string"
-            ? payload.error
-            : "Failed to fetch collab token";
-        throw new Error(message);
-      }
-
-      return (await response.json()) as { token: string; expiresAt: number };
-    };
-
-    const refreshToken = async (provider: WebsocketProvider) => {
-      if (refreshPromiseRef.current) {
-        return refreshPromiseRef.current;
-      }
-
-      const promise = fetchToken()
-        .then(({ token }) => {
-          provider.params.token = token;
-          return token;
-        })
-        .finally(() => {
-          refreshPromiseRef.current = null;
-        });
-
-      refreshPromiseRef.current = promise;
-      return promise;
-    };
-
     const setupEditor = async () => {
       setStatus("connecting");
       setError(null);
       setReady(false);
 
       try {
+        // Manual-save mode: Initialize CodeMirror with local content only
+        if (isManualMode) {
+          if (!editorHostRef.current || !isActive) {
+            return;
+          }
+
+          setStatus("connected");
+
+          const view = new EditorView({
+            state: EditorState.create({
+              doc: initialContent,
+              extensions: [
+                keymap.of(defaultKeymap),
+                syntaxHighlighting(defaultHighlightStyle),
+                lineNumbers(),
+                highlightActiveLineGutter(),
+                highlightActiveLine(),
+                markdown(),
+                EditorView.lineWrapping,
+                blameCompartmentRef.current.of(createBlameGutter()),
+                EditorView.updateListener.of((update) => {
+                  if (update.docChanged) {
+                    setContent(update.state.doc.toString());
+                    setHasLocalEdits(true);
+                    setSaveState("pending");
+                  }
+                }),
+              ],
+            }),
+            parent: editorHostRef.current,
+          });
+
+          editorViewRef.current = view;
+          setReady(true);
+          return;
+        }
+
+        // Collab mode: Initialize with Yjs/WebSocket providers
+        const fetchToken = async () => {
+          const response = await fetch("/api/collab/token", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ workspaceId: workspaceSlug, noteId: notePublicId }),
+            signal: abortController.signal,
+          });
+
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            const message =
+              typeof payload?.error === "string"
+                ? payload.error
+                : "Failed to fetch collab token";
+            throw new Error(message);
+          }
+
+          return (await response.json()) as { token: string; expiresAt: number };
+        };
+
+        const refreshToken = async (provider: WebsocketProvider) => {
+          if (refreshPromiseRef.current) {
+            return refreshPromiseRef.current;
+          }
+
+          const promise = fetchToken()
+            .then(({ token }) => {
+              provider.params.token = token;
+              return token;
+            })
+            .finally(() => {
+              refreshPromiseRef.current = null;
+            });
+
+          refreshPromiseRef.current = promise;
+          return promise;
+        };
+
         const { token } = await fetchToken();
 
         if (!editorHostRef.current || !isActive) {
@@ -630,7 +671,7 @@ export default function NoteEditor({
     setupEditor();
 
     const handleVisibilityChange = () => {
-      if (document.hidden && editorViewRef.current) {
+      if (document.hidden && editorViewRef.current && !isManualMode) {
         sessionStorage.setItem(storageKey, editorViewRef.current.state.doc.toString());
       }
     };
@@ -704,14 +745,81 @@ export default function NoteEditor({
     return date.toLocaleString();
   };
 
+  const handleManualSave = useCallback(async () => {
+    if (!isManualMode || saveState === "saving" || !hasLocalEdits) {
+      return;
+    }
+
+    setSaveState("saving");
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/workspaces/${workspaceSlug}/notes/${notePublicId}/content`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ content, includeBlame: true }),
+        }
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        const message =
+          typeof payload?.error === "string" ? payload.error : "Failed to save changes";
+        throw new Error(message);
+      }
+
+      const data = await response.json() as {
+        updatedAt: string;
+        blame?: BlameEntry[];
+      };
+
+      setLastSavedAt(new Date(data.updatedAt));
+      setSaveState("saved");
+      setHasLocalEdits(false);
+      if (data.blame) {
+        setBlameEntries(data.blame);
+      }
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error ? caughtError.message : "Failed to save changes";
+      setError(message);
+      setSaveState("error");
+    }
+  }, [content, hasLocalEdits, isManualMode, notePublicId, saveState, workspaceSlug]);
+
   const saveStatusTone = useMemo(() => {
+    if (isManualMode) {
+      return saveState === "error" ? "text-destructive" : "text-muted-foreground";
+    }
     if (status === "disconnected" || saveState === "error") {
       return "text-destructive";
     }
     return "text-muted-foreground";
-  }, [saveState, status]);
+  }, [isManualMode, saveState, status]);
 
   const saveStatusLabel = useMemo(() => {
+    // Manual-save mode labels
+    if (isManualMode) {
+      if (saveState === "error") {
+        return "Save failed";
+      }
+      if (saveState === "saving") {
+        return "Saving...";
+      }
+      if (saveState === "pending") {
+        return "Unsaved changes";
+      }
+      if (lastSavedAt) {
+        return `All changes saved • ${formatTimestamp(lastSavedAt)}`;
+      }
+      return "All changes saved";
+    }
+
+    // Collab mode labels
     if (status === "disconnected") {
       return "Offline";
     }
@@ -728,7 +836,7 @@ export default function NoteEditor({
       return `All changes saved • ${formatTimestamp(lastSavedAt)}`;
     }
     return "All changes saved";
-  }, [lastSavedAt, saveState, status]);
+  }, [isManualMode, lastSavedAt, saveState, status]);
 
   return (
     <div className="note-editor flex h-full min-h-0 flex-col overflow-hidden bg-background">
@@ -787,25 +895,50 @@ export default function NoteEditor({
               <TooltipContent side="bottom">Preview</TooltipContent>
             </Tooltip>
           </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={cn(
-                  "h-6 w-8",
-                  status === "connected" && "text-primary",
-                  status === "connecting" && "text-muted-foreground",
-                  status === "disconnected" && "text-destructive"
-                )}
-              >
-                {statusIcon[status]}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{status}</TooltipContent>
-          </Tooltip>
+          {/* Manual-save mode: Show Save button */}
+          {isManualMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleManualSave}
+              disabled={saveState === "saving" || !hasLocalEdits}
+              className="h-6 px-2 text-[11px]"
+            >
+              {saveState === "saving" ? (
+                <>
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  Saving...
+                </>
+              ) : saveState === "error" ? (
+                "Save failed"
+              ) : (
+                "Save"
+              )}
+            </Button>
+          )}
+          {/* Collab mode: Show status icon */}
+          {!isManualMode && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(
+                    "h-6 w-8",
+                    status === "connected" && "text-primary",
+                    status === "connecting" && "text-muted-foreground",
+                    status === "disconnected" && "text-destructive"
+                  )}
+                >
+                  {statusIcon[status]}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{status}</TooltipContent>
+            </Tooltip>
+          )}
           <span className={`text-[11px] ${saveStatusTone}`}>{saveStatusLabel}</span>
-          {activeUsers.length > 0 ? (
+          {/* Collab mode: Show active users */}
+          {!isManualMode && activeUsers.length > 0 ? (
             <div className="flex items-center gap-1">
               {visibleUsers.map((user) => (
                 <Tooltip key={user.id}>
@@ -862,7 +995,7 @@ export default function NoteEditor({
         {error ? (
           <div className="px-3 pb-2">
             <Alert variant="destructive">
-              <AlertTitle>Collaboration error</AlertTitle>
+              <AlertTitle>{isManualMode ? "Save error" : "Collaboration error"}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           </div>
