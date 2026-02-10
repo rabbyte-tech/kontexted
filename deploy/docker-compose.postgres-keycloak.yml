@@ -1,0 +1,107 @@
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: kontexted-traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      keycloak:
+        condition: service_started
+      kontexted:
+        condition: service_started
+
+  postgres:
+    image: postgres:latest
+    container_name: kontexted-postgres-keycloak
+    environment:
+      POSTGRES_USER: kontexted
+      POSTGRES_PASSWORD: kontexted
+      POSTGRES_DB: kontexted
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kontexted -d kontexted"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: kontexted-keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/kontexted
+      KC_DB_USERNAME: kontexted
+      KC_DB_PASSWORD: kontexted
+      KC_DB_SCHEMA: keycloak
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY: edge
+      KC_HOSTNAME: keycloak.localhost
+      KC_HOSTNAME_PORT: "80"
+      KC_HOSTNAME_STRICT: "false"
+    command: start-dev --import-realm
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keycloak.rule=Host(`keycloak.localhost`)"
+      - "traefik.http.routers.keycloak.entrypoints=web"
+      - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import
+    extra_hosts:
+      - "keycloak.localhost:host-gateway"
+      - "app.localhost:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  kontexted:
+    build:
+      context: ..
+      dockerfile: apps/Dockerfile
+    container_name: kontexted
+    restart: unless-stopped
+    environment:
+      DATABASE_DIALECT: postgresql
+      DATABASE_URL: postgresql://kontexted:kontexted@postgres:5432/kontexted
+      AUTH_METHOD: keycloak
+      AUTH_KEYCLOAK_ID: kontexted-webapp
+      AUTH_KEYCLOAK_SECRET: kontexted-local-secret
+      AUTH_KEYCLOAK_ISSUER: http://keycloak.localhost/realms/kontexted
+      BETTER_AUTH_SECRET: 2f9569d6a7081d4fc978afc430d06b80
+      BETTER_AUTH_URL: http://app.localhost
+      BETTER_AUTH_TRUSTED_ORIGINS: http://app.localhost
+      COLLAB_TOKEN_SECRET: 6544c2e89932a0c72daf8c42c30b021e
+      PORT: "3000"
+      HOST: 0.0.0.0
+      NODE_ENV: production
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kontexted.rule=Host(`app.localhost`)"
+      - "traefik.http.routers.kontexted.entrypoints=web"
+      - "traefik.http.services.kontexted.loadbalancer.server.port=3000"
+    extra_hosts:
+      - "keycloak.localhost:host-gateway"
+      - "collab.localhost:host-gateway"
+      - "app.localhost:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+volumes:
+  pgdata:

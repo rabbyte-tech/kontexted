@@ -1,0 +1,23 @@
+services:
+  kontexted:
+    build:
+      context: ..
+      dockerfile: apps/Dockerfile
+    container_name: kontexted-sqlite
+    restart: unless-stopped
+    environment:
+      DATABASE_DIALECT: sqlite
+      DATABASE_URL: /app/data/kontexted.db
+      AUTH_METHOD: email-password
+      INVITE_CODE: docker-dev
+      BETTER_AUTH_SECRET: 2f9569d6a7081d4fc978afc430d06b80
+      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_TRUSTED_ORIGINS: http://localhost:3000
+      COLLAB_TOKEN_SECRET: 6544c2e89932a0c72daf8c42c30b021e
+      PORT: 3000
+      HOST: 0.0.0.0
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data

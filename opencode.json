@@ -1,11 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "next-devtools": {
-      "type": "local",
-      "enabled": true,
-      "command": ["npx", "-y", "next-devtools-mcp@latest"]
-    },
     "shadcn": {
       "type": "local",
       "command": ["npx", "shadcn@latest", "mcp"],

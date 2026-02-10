@@ -1,0 +1,47 @@
+{
+  "name": "@kontexted/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "tsc && tsc-alias -f && node -e \"const fs=require('fs'),path=require('path');const migrateSrc='src/db/migrate.mjs';const migrateDest='dist/db/migrate.js';fs.mkdirSync(path.dirname(migrateDest),{recursive:true});fs.copyFileSync(migrateSrc,migrateDest);console.log('Copied migrate script to',migrateDest);const migrationsSrc='src/migrations';const migrationsDest='dist/migrations';if(fs.existsSync(migrationsSrc)){fs.mkdirSync(migrationsDest,{recursive:true});fs.cpSync(migrationsSrc,migrationsDest,{recursive:true,force:true});console.log('Copied migrations folder to',migrationsDest);}else{console.log('No migrations folder found, skipping copy');}\"",
+    "start": "bun dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:generate:sqlite": "DATABASE_DIALECT=sqlite drizzle-kit generate",
+    "db:generate:pg": "DATABASE_DIALECT=postgresql drizzle-kit generate",
+    "db:migrate": "bun src/db/migrate.mjs",
+    "db:migrate:sqlite": "DATABASE_DIALECT=sqlite bun src/db/migrate.mjs",
+    "db:migrate:pg": "DATABASE_DIALECT=postgresql bun src/db/migrate.mjs",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:studio:sqlite": "DATABASE_DIALECT=sqlite drizzle-kit studio",
+    "db:studio:pg": "DATABASE_DIALECT=postgresql drizzle-kit studio"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "@paralleldrive/cuid2": "^3.0.6",
+    "better-auth": "^1.2.7",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.6.14",
+    "jose": "^5.10.0",
+    "lib0": "^0.2.102",
+    "pg": "^8.18.0",
+    "postgres": "^3.4.5",
+    "ws": "^8.19.0",
+    "y-protocols": "^1.0.5",
+    "yjs": "^13.6.29",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.16.0",
+    "bun-types": "^1.3.9",
+    "drizzle-kit": "^0.31.9",
+    "tsc-alias": "^1.8.10",
+    "typescript": "^5"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
