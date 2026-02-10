@@ -51,8 +51,8 @@ jobs:
       - name: Build and push Kontexted
         uses: docker/build-push-action@v6
         with:
-          context: ./apps/server
-          file: ./apps/server/Dockerfile
+          context: .
+          file: ./apps/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.push_images == 'true') }}
           tags: |
