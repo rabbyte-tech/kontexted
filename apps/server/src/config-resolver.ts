@@ -1,6 +1,11 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
+
+// ESM __dirname equivalent
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 /**
  * Configuration structure
@@ -20,6 +25,28 @@ export interface ServerConfig {
   collab: {
     tokenSecret: string;
   };
+  auth: {
+    betterAuthSecret: string;
+    inviteCode: string;
+  };
+  paths?: {
+    publicDir?: string;
+    migrationsDir?: string;
+  };
+}
+
+/**
+ * Generate a random readable invite code
+ * Excludes ambiguous characters: 0, o, 1, l
+ */
+function generateInviteCode(): string {
+  const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
+  const bytes = randomBytes(16);
+  let code = '';
+  for (let i = 0; i < 16; i++) {
+    code += chars[bytes[i] % chars.length];
+  }
+  return code;
 }
 
 /**
@@ -40,6 +67,10 @@ function getDefaults(): ServerConfig {
     },
     collab: {
       tokenSecret: 'dev-secret',
+    },
+    auth: {
+      betterAuthSecret: randomBytes(32).toString('hex'),
+      inviteCode: generateInviteCode(),
     },
   };
 }
@@ -65,6 +96,11 @@ function loadFromEnv(): ServerConfig | null {
     throw new Error('COLLAB_TOKEN_SECRET is required in production');
   }
 
+  const betterAuthSecret = process.env.BETTER_AUTH_SECRET;
+  if (process.env.NODE_ENV === 'production' && !betterAuthSecret) {
+    throw new Error('BETTER_AUTH_SECRET is required in production');
+  }
+
   return {
     database: {
       dialect: (process.env.DATABASE_DIALECT as 'sqlite' | 'postgresql') || defaults.database.dialect,
@@ -79,6 +115,14 @@ function loadFromEnv(): ServerConfig | null {
     },
     collab: {
       tokenSecret: tokenSecret || defaults.collab.tokenSecret,
+    },
+    auth: {
+      betterAuthSecret: betterAuthSecret || defaults.auth.betterAuthSecret,
+      inviteCode: process.env.INVITE_CODE || defaults.auth.inviteCode,
+    },
+    paths: {
+      publicDir: process.env.KONTEXTED_PUBLIC_DIR,
+      migrationsDir: process.env.KONTEXTED_MIGRATIONS_DIR,
     },
   };
 }
@@ -110,6 +154,14 @@ function loadFromFile(): ServerConfig | null {
       throw new Error('COLLAB_TOKEN_SECRET is required in production');
     }
 
+    const betterAuthSecret = parsed.auth?.betterAuthSecret;
+
+    if (process.env.NODE_ENV === 'production' && !betterAuthSecret) {
+      throw new Error('auth.betterAuthSecret is required in production');
+    }
+
+    const defaults = getDefaults();
+
     return {
       database: {
         dialect: parsed.database.dialect || 'sqlite',
@@ -124,6 +176,14 @@ function loadFromFile(): ServerConfig | null {
       },
       collab: {
         tokenSecret: tokenSecret || 'dev-secret',
+      },
+      auth: {
+        betterAuthSecret: betterAuthSecret || defaults.auth.betterAuthSecret,
+        inviteCode: parsed.auth?.inviteCode || defaults.auth.inviteCode,
+      },
+      paths: {
+        publicDir: parsed.paths?.publicDir,
+        migrationsDir: parsed.paths?.migrationsDir,
       },
     };
   } catch (error) {
@@ -146,6 +206,7 @@ export function resolveConfig(): ServerConfig {
 
   // Priority 2: Config file (local CLI users)
   const fileConfig = loadFromFile();
+  console.log(fileConfig)
   if (fileConfig) {
     console.log('Using configuration from ~/.kontexted/config.json');
     return fileConfig;
@@ -163,4 +224,44 @@ export function getConfigSource(): 'environment' | 'file' | 'defaults' {
   if (loadFromEnv()) return 'environment';
   if (loadFromFile()) return 'file';
   return 'defaults';
+}
+
+/**
+ * Resolve the public directory path.
+ * Priority: KONTEXTED_PUBLIC_DIR env var > config file > default
+ */
+export function resolvePublicDir(): string {
+  // Priority 1: Environment variable
+  if (process.env.KONTEXTED_PUBLIC_DIR) {
+    return process.env.KONTEXTED_PUBLIC_DIR;
+  }
+
+  // Priority 2: Config file
+  const config = loadFromFile();
+  if (config?.paths?.publicDir) {
+    return config.paths.publicDir;
+  }
+
+  // Priority 3: Default (relative to current file - for Docker/dev)
+  return join(__dirname, "public");
+}
+
+/**
+ * Resolve the migrations directory path.
+ * Priority: KONTEXTED_MIGRATIONS_DIR env var > config file > default
+ */
+export function resolveMigrationsDir(dialect: 'sqlite' | 'postgresql'): string {
+  // Priority 1: Environment variable
+  if (process.env.KONTEXTED_MIGRATIONS_DIR) {
+    return join(process.env.KONTEXTED_MIGRATIONS_DIR, dialect);
+  }
+
+  // Priority 2: Config file
+  const config = loadFromFile();
+  if (config?.paths?.migrationsDir) {
+    return join(config.paths.migrationsDir, dialect);
+  }
+
+  // Priority 3: Default (relative to dist/db/ - for Docker/dev)
+  return join(__dirname, "..", "migrations", dialect);
 }

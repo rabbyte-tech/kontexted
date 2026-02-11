@@ -1,11 +1,16 @@
 {
   "name": "@kontexted/server",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "build": "tsc && tsc-alias -f && node -e \"const fs=require('fs'),path=require('path');const migrateSrc='src/db/migrate.mjs';const migrateDest='dist/db/migrate.js';fs.mkdirSync(path.dirname(migrateDest),{recursive:true});fs.copyFileSync(migrateSrc,migrateDest);console.log('Copied migrate script to',migrateDest);const migrationsSrc='src/migrations';const migrationsDest='dist/migrations';if(fs.existsSync(migrationsSrc)){fs.mkdirSync(migrationsDest,{recursive:true});fs.cpSync(migrationsSrc,migrationsDest,{recursive:true,force:true});console.log('Copied migrations folder to',migrationsDest);}else{console.log('No migrations folder found, skipping copy');}\"",
+    "build:executable": "bun scripts/build-executable.ts",
+    "build:migrate": "bun scripts/build-migrate.ts",
+    "build:all": "bun run build:executable && bun run build:migrate",
+    "assemble": "bun scripts/assemble-package.ts",
+    "dist": "bun run build:all && bun run assemble",
     "start": "bun dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:generate:sqlite": "DATABASE_DIALECT=sqlite drizzle-kit generate",
@@ -19,9 +24,10 @@
     "db:studio:pg": "DATABASE_DIALECT=postgresql drizzle-kit studio"
   },
   "dependencies": {
+    "@better-auth/oauth-provider": "^1.4.18",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@paralleldrive/cuid2": "^3.0.6",
-    "better-auth": "^1.2.7",
+    "better-auth": "^1.4.18",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.6.14",

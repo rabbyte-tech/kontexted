@@ -3,6 +3,12 @@ node_modules
 .idea
 dist
 
+# Compiled executable builds
+build/
+bun-build/
+.bun-build/
+*.bun-build
+
 # SQLite database files
 data/
 *.db

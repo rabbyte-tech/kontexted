@@ -1,7 +1,8 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createAuthMiddleware } from "better-auth/api";
-import { genericOAuth, keycloak, mcp } from "better-auth/plugins";
+import { genericOAuth, keycloak, jwt } from "better-auth/plugins";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { db, dialect } from "@/db";
 import {
   users,
@@ -10,7 +11,9 @@ import {
   verifications,
   oauthApplications,
   oauthAccessTokens,
+  oauthRefreshTokens,
   oauthConsents,
+  jwks,
 } from "@/db/schema";
 
 // Get auth base URL from environment or config
@@ -20,7 +23,7 @@ function getAuthBaseURL(): string {
     console.log(`[auth] Using BETTER_AUTH_URL: ${process.env.BETTER_AUTH_URL}`);
     return process.env.BETTER_AUTH_URL;
   }
-  
+
   // Priority 2: Construct from server config (default for local dev)
   const config = global.KONTEXTED_CONFIG || {
     server: {
@@ -28,7 +31,8 @@ function getAuthBaseURL(): string {
       port: parseInt(process.env.PORT || '4242', 10),
     },
   };
-  const baseURL = `http://${config.server.host}:${config.server.port}`;
+  const configHost = config.server.host === "0.0.0.0" || config.server.host === "::" ? "localhost" : config.server.host;
+  const baseURL = `http://${configHost}:${config.server.port}`;
   console.log(`[auth] Using config-based URL: ${baseURL}`);
   return baseURL;
 }
@@ -38,8 +42,16 @@ const baseURL = getAuthBaseURL();
 const authMethod = process.env.AUTH_METHOD || "email-password";
 
 const plugins: any[] = [
-  mcp({
+  jwt(),
+  oauthProvider({
     loginPage: "/",
+    consentPage: "/consent",
+    scopes: ["openid", "profile", "email", "offline_access"],
+    validAudiences: [baseURL, `${baseURL}/`, `${baseURL}/mcp`],
+    accessTokenExpiresIn: 3600,
+    refreshTokenExpiresIn: 604800,
+    allowDynamicClientRegistration: true,
+    allowUnauthenticatedClientRegistration: true,
   }),
 ];
 
@@ -71,9 +83,11 @@ export const auth = betterAuth({
       account: accounts,
       session: sessions,
       verification: verifications,
-      oauthApplication: oauthApplications,
+      oauthClient: oauthApplications,
       oauthAccessToken: oauthAccessTokens,
+      oauthRefreshToken: oauthRefreshTokens,
       oauthConsent: oauthConsents,
+      jwks,
     },
   }),
   baseURL,
@@ -84,7 +98,7 @@ export const auth = betterAuth({
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/sign-up/email" && ctx.method === "POST") {
-        const inviteCode = process.env.INVITE_CODE;
+        const inviteCode = global.KONTEXTED_CONFIG?.auth?.inviteCode;
         if (!inviteCode) {
           return ctx.json(
             { error: "Sign up is not available" },

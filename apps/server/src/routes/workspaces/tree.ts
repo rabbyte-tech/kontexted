@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { parseSlug } from "@/lib/params";
 import { resolveWorkspaceId } from "@/lib/resolvers";
 import { getWorkspaceTree } from "@/lib/workspace-tree";
+import { transformWorkspaceTree } from "@/lib/workspace-tree-transform";
 import { requireAuth } from "@/routes/middleware/require-auth";
 import type { Variables } from "@/routes/types";
 
@@ -26,7 +27,7 @@ app.get("/", requireAuth, async (c) => {
     return c.json({ error: "Workspace not found" }, 404);
   }
 
-  return c.json(tree, 200);
+  return c.json(transformWorkspaceTree(tree, validatedSlug), 200);
 });
 
 export { app };

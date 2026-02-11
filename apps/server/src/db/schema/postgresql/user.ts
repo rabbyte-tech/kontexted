@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const users = pgTable("user", {
   id: text("id")
@@ -67,15 +68,31 @@ export const oauthApplications = pgTable(
       .$defaultFn(() => randomUUID()),
     clientId: text("clientId").notNull().unique(),
     clientSecret: text("clientSecret"),
-    type: text("type").notNull(),
-    name: text("name").notNull(),
-    icon: text("icon"),
-    metadata: text("metadata"),
-    redirectUrls: text("redirectUrls").notNull(),
     disabled: boolean("disabled").notNull().default(false),
+    skipConsent: boolean("skipConsent"),
+    enableEndSession: boolean("enableEndSession"),
+    scopes: text("scopes"),
     userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+    name: text("name").notNull(),
+    uri: text("uri"),
+    icon: text("icon"),
+    contacts: text("contacts"),
+    tos: text("tos"),
+    policy: text("policy"),
+    softwareId: text("softwareId"),
+    softwareVersion: text("softwareVersion"),
+    softwareStatement: text("softwareStatement"),
+    redirectUris: text("redirectUris").notNull(),
+    postLogoutRedirectUris: text("postLogoutRedirectUris"),
+    tokenEndpointAuthMethod: text("tokenEndpointAuthMethod"),
+    grantTypes: text("grantTypes"),
+    responseTypes: text("responseTypes"),
+    public: boolean("public"),
+    type: text("type"),
+    referenceId: text("referenceId"),
+    metadata: text("metadata"),
   },
   (table) => [
     index("oauth_application_user_id_idx").on(table.userId),
@@ -88,23 +105,23 @@ export const oauthAccessTokens = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => randomUUID()),
-    accessToken: text("accessToken").notNull(),
-    refreshToken: text("refreshToken").notNull(),
-    accessTokenExpiresAt: timestamp("accessTokenExpiresAt", { mode: "date" }).notNull(),
-    refreshTokenExpiresAt: timestamp("refreshTokenExpiresAt", { mode: "date" }).notNull(),
+    token: text("token").notNull(),
     clientId: text("clientId")
       .notNull()
       .references(() => oauthApplications.clientId, { onDelete: "cascade" }),
+    sessionId: text("sessionId").references(() => sessions.id, { onDelete: "set null" }),
     userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
-    scopes: text("scopes").notNull(),
+    referenceId: text("referenceId"),
+    refreshId: text("refreshId").references(() => oauthRefreshTokens.id, { onDelete: "set null" }),
+    expiresAt: timestamp("expiresAt", { mode: "date" }),
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
-    updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
+    scopes: text("scopes").notNull(),
   },
   (table) => [
-    uniqueIndex("oauth_access_token_value_idx").on(table.accessToken),
-    uniqueIndex("oauth_refresh_token_value_idx").on(table.refreshToken),
+    uniqueIndex("oauth_access_token_token_unique").on(table.token),
     index("oauth_access_token_client_id_idx").on(table.clientId),
     index("oauth_access_token_user_id_idx").on(table.userId),
+    index("oauth_access_token_session_id_idx").on(table.sessionId),
   ]
 );
 
@@ -117,11 +134,9 @@ export const oauthConsents = pgTable(
     clientId: text("clientId")
       .notNull()
       .references(() => oauthApplications.clientId, { onDelete: "cascade" }),
-    userId: text("userId")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    userId: text("userId").references(() => users.id, { onDelete: "cascade" }),
+    referenceId: text("referenceId"),
     scopes: text("scopes").notNull(),
-    consentGiven: boolean("consentGiven").notNull(),
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
   },
@@ -129,4 +144,42 @@ export const oauthConsents = pgTable(
     index("oauth_consent_client_id_idx").on(table.clientId),
     index("oauth_consent_user_id_idx").on(table.userId),
   ]
+);
+
+export const oauthRefreshTokens = pgTable(
+  "oauthRefreshToken",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    token: text("token").notNull().unique(),
+    clientId: text("clientId")
+      .notNull()
+      .references(() => oauthApplications.clientId, { onDelete: "cascade" }),
+    sessionId: text("sessionId").references(() => sessions.id, { onDelete: "set null" }),
+    userId: text("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    referenceId: text("referenceId"),
+    expiresAt: timestamp("expiresAt", { mode: "date" }),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+    revoked: timestamp("revoked", { mode: "date" }),
+    scopes: text("scopes").notNull(),
+  },
+  (table) => [
+    index("oauth_refresh_token_client_id_idx").on(table.clientId),
+    index("oauth_refresh_token_user_id_idx").on(table.userId),
+    index("oauth_refresh_token_session_id_idx").on(table.sessionId),
+  ]
+);
+
+export const jwks = pgTable(
+  "jwks",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    publicKey: text("publicKey").notNull(),
+    privateKey: text("privateKey").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: false }).notNull().defaultNow(),
+    expiresAt: timestamp("expiresAt", { withTimezone: false }),
+  }
 );

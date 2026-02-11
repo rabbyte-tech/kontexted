@@ -1,0 +1,364 @@
+# Kontexted Release Workflow
+#
+# This workflow handles building and publishing Kontexted packages:
+# - Platform-specific native packages (@kontexted/darwin-arm64, @kontexted/linux-x64, etc.)
+# - Main CLI package (kontexted)
+#
+# Trigger: workflow_dispatch - version is read from apps/server/package.json
+
+name: Release
+
+on:
+  workflow_dispatch:
+
+# Permissions required for the workflow
+permissions:
+  contents: write  # Required for creating releases and uploading artifacts
+
+env:
+  # NPM organization scope for platform packages
+  NPM_SCOPE: '@kontexted'
+
+jobs:
+  # ===========================================================================
+  # PREPARE JOB
+  # ===========================================================================
+  # Validates version consistency across all package.json files and optionalDependencies
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Extract version from package.json
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(node -e "console.log(require('./apps/server/package.json').version)")
+
+          # Validate version format (semver)
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Error: Invalid version format: $VERSION"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "::notice::Using version: $VERSION"
+
+      # Validate version consistency across all package.json files
+      - name: Validate version consistency
+        run: |
+          SERVER_VERSION=$(node -e "console.log(require('./apps/server/package.json').version)")
+          CLI_VERSION=$(node -e "console.log(require('./apps/cli/package.json').version)")
+
+          echo "Server version: $SERVER_VERSION"
+          echo "CLI version: $CLI_VERSION"
+
+          # Check server and CLI versions match
+          if [ "$SERVER_VERSION" != "$CLI_VERSION" ]; then
+            echo "Error: Version mismatch - server ($SERVER_VERSION) != CLI ($CLI_VERSION)"
+            exit 1
+          fi
+
+          # Validate optionalDependencies versions
+          CLI_PKG=$(node -e "console.log(JSON.stringify(require('./apps/cli/package.json'), null, 2))")
+          echo "Checking optionalDependencies..."
+
+          # Extract and validate each platform package version
+          for arch in darwin-arm64 linux-x64 windows-x64; do
+            PKG_VERSION=$(node -e "
+              const pkg = require('./apps/cli/package.json');
+              const dep = pkg.optionalDependencies && pkg.optionalDependencies['@kontexted/${arch}'];
+              console.log(dep || 'NOT_FOUND');
+            ")
+
+            if [ "$PKG_VERSION" = "NOT_FOUND" ]; then
+              echo "Warning: @kontexted/${arch} not found in optionalDependencies"
+              continue
+            fi
+
+            if [ "$PKG_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+              echo "Error: @kontexted/${arch} version ($PKG_VERSION) != target version (${{ steps.version.outputs.version }})"
+              exit 1
+            fi
+            echo "@kontexted/${arch}: $PKG_VERSION ✓"
+          done
+
+          echo "::notice::All versions validated successfully"
+
+  # ===========================================================================
+  # BUILD JOBS - One per platform
+  # ===========================================================================
+  # Each platform job:
+  # 1. Builds the client
+  # 2. Builds the server executable for the specific architecture
+  # 3. Creates a platform-specific npm package
+  # 4. Uploads the package as an artifact
+
+  build-darwin-arm64:
+    name: Build darwin-arm64
+    needs: prepare
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Build client (required for server)
+      - name: Build client
+        run: |
+          cd apps/client
+          bun install
+          bun run build
+
+      # Build server executable for darwin-arm64
+      - name: Build server executable
+        env:
+          KONTEXTED_BUILD_ARCH: darwin-arm64
+        run: |
+          cd apps/server
+          bun run dist
+
+      # Create npm package for this platform
+      # The assemble-package.ts script already creates proper package.json in build/{arch}/
+      - name: Create platform package
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          ARCH=darwin-arm64
+          PKG_NAME="@kontexted/${ARCH}"
+
+          cd build/${ARCH}
+          tar -czf "../../${PKG_NAME}-${VERSION}.tar.gz" .
+          cd ../..
+
+          ls -la "${PKG_NAME}-${VERSION}.tar.gz"
+
+      # Upload artifact
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NPM_SCOPE }}-darwin-arm64
+          path: ${{ env.NPM_SCOPE }}-darwin-arm64-*.tar.gz
+          retention-days: 5
+
+  build-linux-x64:
+    name: Build linux-x64
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build client
+        run: |
+          cd apps/client
+          bun install
+          bun run build
+
+      - name: Build server executable
+        env:
+          KONTEXTED_BUILD_ARCH: linux-x64
+        run: |
+          cd apps/server
+          bun run dist
+
+      # The assemble-package.ts script already creates proper package.json in build/{arch}/
+      - name: Create platform package
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          ARCH=linux-x64
+          PKG_NAME="@kontexted/${ARCH}"
+
+          cd build/${ARCH}
+          tar -czf "../../${PKG_NAME}-${VERSION}.tar.gz" .
+          cd ../..
+
+          ls -la "${PKG_NAME}-${VERSION}.tar.gz"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NPM_SCOPE }}-linux-x64
+          path: ${{ env.NPM_SCOPE }}-linux-x64-*.tar.gz
+          retention-days: 5
+
+  build-windows-x64:
+    name: Build windows-x64
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build client
+        run: |
+          cd apps/client
+          bun install
+          bun run build
+
+      - name: Build server executable
+        env:
+          KONTEXTED_BUILD_ARCH: windows-x64
+        run: |
+          cd apps/server
+          bun run dist
+
+      # The assemble-package.ts script already creates proper package.json in build/{arch}/
+      - name: Create platform package
+        shell: bash
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          ARCH=windows-x64
+          PKG_NAME="@kontexted/${ARCH}"
+
+          cd build/${ARCH}
+          tar -czf "../../${PKG_NAME}-${VERSION}.tar.gz" .
+          cd ../..
+
+          ls -la "${PKG_NAME}-${VERSION}.tar.gz"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NPM_SCOPE }}-windows-x64
+          path: ${{ env.NPM_SCOPE }}-windows-x64-*.tar.gz
+          retention-days: 5
+
+  # ===========================================================================
+  # BUILD CLI JOB
+  # ===========================================================================
+  # Builds the main kontexted CLI npm package
+  build-cli:
+    name: Build CLI
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install npm dependencies
+        run: |
+          cd apps/cli
+          npm install
+
+      - name: Build CLI
+        run: |
+          cd apps/cli
+          npm run build
+
+      - name: Create CLI package
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          cd apps/cli
+
+          # Create the package archive
+          npm pack
+
+          # Verify the package
+          tar -tzf "kontexted-${VERSION}.tgz"
+
+          mv "kontexted-${VERSION}.tgz" ../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kontexted-cli
+          path: kontexted-*.tgz
+          retention-days: 5
+
+  # ===========================================================================
+  # PUBLISH JOB
+  # ===========================================================================
+  # Downloads all artifacts, creates GitHub release, and publishes to npm
+  publish:
+    name: Publish Release
+    needs: [prepare, build-darwin-arm64, build-linux-x64, build-windows-x64, build-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup npmrc
+        run: |
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > .npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Publish platform packages to npm
+      - name: Publish platform packages to npm
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          cd artifacts
+
+          for arch in darwin-arm64 linux-x64 windows-x64; do
+            PKG_DIR="@kontexted-${arch}"
+            if [ -d "$PKG_DIR" ]; then
+              TARBALL=$(ls "${PKG_DIR}/@kontexted-${arch}-${VERSION}.tar.gz" 2>/dev/null || ls "${PKG_DIR}"/*.tar.gz 2>/dev/null | head -1)
+              if [ -n "$TARBALL" ]; then
+                echo "Publishing @kontexted/${arch}..."
+                npm publish "$TARBALL" --access public
+              else
+                echo "Warning: No tarball found for @kontexted/${arch}"
+              fi
+            else
+              echo "Warning: Directory $PKG_DIR not found"
+            fi
+          done
+
+      # Publish CLI package to npm
+      - name: Publish CLI to npm
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          cd artifacts/kontexted-cli
+          CLI_TARBALL=$(ls *.tgz | head -1)
+          echo "Publishing kontexted CLI..."
+          npm publish "$CLI_TARBALL" --access public

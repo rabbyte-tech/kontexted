@@ -1,4 +1,5 @@
-import { oAuthDiscoveryMetadata } from "better-auth/plugins"
-import { auth } from "@/auth"
+import { oauthProviderAuthServerMetadata } from "@better-auth/oauth-provider";
+import { auth } from "@/auth";
 
-export const handler = oAuthDiscoveryMetadata(auth)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const GET = oauthProviderAuthServerMetadata(auth as any);

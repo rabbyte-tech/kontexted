@@ -5,7 +5,7 @@ const app = new Hono<{ Variables: Variables }>();
 
 app.get("/", (c) => {
   const authMethod = process.env.AUTH_METHOD === 'keycloak' ? 'keycloak' : 'email-password';
-  const inviteCodeAvailable = !!process.env.INVITE_CODE;
+  const inviteCodeAvailable = !!global.KONTEXTED_CONFIG?.auth?.inviteCode;
   
   return c.json({
     authMethod,

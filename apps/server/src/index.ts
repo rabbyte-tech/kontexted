@@ -26,8 +26,12 @@ import { getRoom, removeRoom, setupWSConnection } from '@/collab-ws/y-websocket-
 import { workspacesApp as workspacesRoutes } from '@/routes/workspaces';
 import { collabApp as collabRoutes } from '@/routes/collab';
 import { configApp as configRoutes } from '@/routes/config';
-import createMcpHandler from '@/mcp';
+import { skillApp as skillRoutes } from '@/routes/skill';
+import { mcpRoute } from '@/mcp';
 import { setupStatic } from '@/static';
+import { GET as oauthAuthorizationServerGet } from '@/routes/.well-known/oauth-authorization-server';
+import { GET as openidConfigGet } from '@/routes/.well-known/openid-configuration';
+import { GET as oauthProtectedResourceGet } from '@/routes/.well-known/oauth-protected-resource';
 
 // Resolve configuration
 const config = resolveConfig();
@@ -85,42 +89,35 @@ app.use(async (c, next) => {
 // Auth routes
 app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
-// OAuth discovery endpoints for MCP
-app.get('/.well-known/oauth-authorization-server', (c) => {
-  const baseUrl = new URL(c.req.url).origin;
-  return c.json({
-    issuer: baseUrl,
-    authorization_endpoint: `${baseUrl}/api/auth/authorize`,
-    token_endpoint: `${baseUrl}/api/auth/token`,
-    registration_endpoint: `${baseUrl}/api/auth/register`,
-    scopes_supported: ['openid', 'profile', 'email'],
-    response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code', 'refresh_token'],
-    token_endpoint_auth_methods_supported: ['none'],
-    code_challenge_methods_supported: ['S256'],
-  });
+// OAuth discovery endpoints - basic paths
+app.get('/.well-known/oauth-authorization-server', async (c) => {
+  const response = await oauthAuthorizationServerGet(c.req.raw);
+  return c.newResponse(response.body, response);
 });
+app.get('/.well-known/openid-configuration', async (c) => {
+  const response = await openidConfigGet(c.req.raw);
+  return c.newResponse(response.body, response);
+});
+app.get('/.well-known/oauth-protected-resource', oauthProtectedResourceGet);
 
-app.get('/.well-known/openid-configuration', (c) => {
-  const baseUrl = new URL(c.req.url).origin;
-  return c.json({
-    issuer: baseUrl,
-    authorization_endpoint: `${baseUrl}/api/auth/authorize`,
-    token_endpoint: `${baseUrl}/api/auth/token`,
-    userinfo_endpoint: `${baseUrl}/api/auth/userinfo`,
-    jwks_uri: `${baseUrl}/api/auth/jwks`,
-    scopes_supported: ['openid', 'profile', 'email'],
-    response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code', 'refresh_token'],
-  });
+// OAuth discovery endpoints - path-aware variants (with trailing path segments)
+// These allow the MCP SDK to discover metadata for specific resources like /.well-known/oauth-protected-resource/mcp
+app.get('/.well-known/oauth-authorization-server/*', async (c) => {
+  const response = await oauthAuthorizationServerGet(c.req.raw);
+  return c.newResponse(response.body, response);
 });
+app.get('/.well-known/openid-configuration/*', async (c) => {
+  const response = await openidConfigGet(c.req.raw);
+  return c.newResponse(response.body, response);
+});
+app.get('/.well-known/oauth-protected-resource/*', oauthProtectedResourceGet);
 
 // API routes
 app.route('/api/workspaces', workspacesRoutes);
 app.route('/api/collab', collabRoutes);
 app.route('/api/config', configRoutes);
-const mcpHandler = createMcpHandler();
-app.all('/api/mcp/*', async (c) => mcpHandler(c.req.raw));
+app.route('/api/skill', skillRoutes);
+app.all('/mcp', (c) => mcpRoute(c.req.raw));
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
@@ -280,6 +277,7 @@ export default {
   fetch: app.fetch,
   port: config.server.port,
   websocket,
+  idleTimeout: 255, // Max value in Bun (~4 minutes) - keeps SSE connections alive longer
 };
 
 export { app };
