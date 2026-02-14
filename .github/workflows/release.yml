@@ -341,12 +341,12 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+          token: ${{ secrets.NPM_TOKEN }}
 
-      - name: Setup npmrc
+      - name: Verify npm authentication
         run: |
-          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          echo "=== Testing npm authentication ==="
+          npm whoami || echo "npm whoami failed"
 
       # Publish platform packages to npm
       - name: Publish platform packages to npm
