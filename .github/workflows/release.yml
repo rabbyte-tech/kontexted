@@ -355,7 +355,8 @@ jobs:
           cd artifacts
 
           for arch in darwin-arm64 linux-x64 windows-x64; do
-            TARBALL="${arch}/${arch}-${VERSION}.tar.gz"
+            # Artifact name includes NPM_SCOPE prefix: @kontexted-darwin-arm64
+            TARBALL="@kontexted-${arch}/${arch}-${VERSION}.tar.gz"
             if [ -f "$TARBALL" ]; then
               echo "Publishing @kontexted/${arch}..."
               npm publish "$TARBALL" --access public
