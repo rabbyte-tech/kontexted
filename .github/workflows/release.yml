@@ -355,13 +355,14 @@ jobs:
           cd artifacts
 
           for arch in darwin-arm64 linux-x64 windows-x64; do
-            # Artifact name includes NPM_SCOPE prefix: @kontexted-darwin-arm64
-            TARBALL="@kontexted-${arch}/${arch}-${VERSION}.tar.gz"
-            if [ -f "$TARBALL" ]; then
+            ARCH_DIR="@kontexted-${arch}"
+            if [ -d "$ARCH_DIR" ]; then
               echo "Publishing @kontexted/${arch}..."
-              npm publish "$TARBALL" --access public
+              cd "$ARCH_DIR"
+              npm publish --access public
+              cd ..
             else
-              echo "Warning: Tarball not found for @kontexted/${arch}"
+              echo "Warning: Directory not found for @kontexted/${arch}"
             fi
           done
 
