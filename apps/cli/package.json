@@ -1,0 +1,50 @@
+{
+  "name": "kontexted",
+  "version": "0.1.3",
+  "description": "CLI tool for Kontexted - MCP proxy, workspaces management, and local server",
+  "type": "module",
+  "bin": {
+    "kontexted": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc && tsc-alias -f && node -e \"const fs=require('fs'),path=require('path');const src='dist/index.js';const content=fs.readFileSync(src,'utf8');fs.writeFileSync(src,'#!/usr/bin/env node\\n'+content);fs.chmodSync(src,0o755);console.log('Added shebang and set executable');\"",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "kontexted",
+    "mcp",
+    "cli",
+    "notes",
+    "workspace"
+  ],
+  "author": "Kontexted",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "commander": "^12.1.0",
+    "yargs": "^17.7.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/yargs": "^17.0.35",
+    "tsc-alias": "^1.8.10",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.0"
+  },
+  "optionalDependencies": {
+    "@kontexted/darwin-arm64": "0.1.3",
+    "@kontexted/linux-x64": "0.1.3",
+    "@kontexted/windows-x64": "0.1.3"
+  }
+}

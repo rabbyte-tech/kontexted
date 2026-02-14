@@ -1,4 +1,4 @@
-.PHONY: install dev build start clean test docker-build docker-run help
+.PHONY: install dev build start clean test docker-build docker-run help dist dist-server
 
 # Colors for output
 BLUE := \033[0;34m
@@ -57,20 +57,30 @@ build-server: ## Build server only
 	cd apps/server && bun run build
 	@echo "$(GREEN)✓ Server built$(NC)"
 
+dist: build-client ## Build compiled executable distribution for all architectures
+	@echo "$(BLUE)Building server executables...$(NC)"
+	cd apps/server && bun run dist
+	@echo "$(GREEN)✓ Distribution built in build/$(NC)"
+
+dist-server: ## Build server executables only (requires client to be built first)
+	@echo "$(BLUE)Building server executables...$(NC)"
+	cd apps/server && bun run dist
+	@echo "$(GREEN)✓ Distribution built in build/$(NC)"
+
 start: ## Start production server (requires build)
 	@echo "$(BLUE)Starting production server...$(NC)"
 	cd apps/server && bun start
 
 clean: ## Remove build artifacts and node_modules
 	@echo "$(YELLOW)Cleaning build artifacts...$(NC)"
-	rm -rf apps/client/dist apps/server/dist
+	rm -rf apps/client/dist apps/server/dist build/
 	@echo "$(YELLOW)Cleaning node_modules...$(NC)"
 	rm -rf apps/client/node_modules apps/server/node_modules
 	@echo "$(GREEN)✓ Clean complete$(NC)"
 
 clean-build: ## Remove build artifacts only
 	@echo "$(YELLOW)Cleaning build artifacts...$(NC)"
-	rm -rf apps/client/dist apps/server/dist
+	rm -rf apps/client/dist apps/server/dist build/
 	@echo "$(GREEN)✓ Build artifacts removed$(NC)"
 
 lint: ## Run linter for client (and server if configured)

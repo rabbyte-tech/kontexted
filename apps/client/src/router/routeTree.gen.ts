@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
 import { Route as AuthedWorkspacesIndexRouteImport } from './routes/_authed/workspaces/index'
@@ -21,6 +22,11 @@ import { Route as AuthedWorkspacesWorkspaceSlugNotesNoteIdHistoryRouteImport } f
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsentRoute = ConsentRouteImport.update({
+  id: '/consent',
+  path: '/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthedRoute = AuthedRouteImport.update({
@@ -64,6 +70,7 @@ const AuthedWorkspacesWorkspaceSlugNotesNoteIdHistoryRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
+  '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
   '/workspaces/$workspaceSlug': typeof AuthedWorkspacesWorkspaceSlugRouteWithChildren
   '/workspaces/': typeof AuthedWorkspacesIndexRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/workspaces/$workspaceSlug/notes/$noteId/': typeof AuthedWorkspacesWorkspaceSlugNotesNoteIdIndexRoute
 }
 export interface FileRoutesByTo {
+  '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
   '/': typeof AuthedIndexRoute
   '/workspaces/$workspaceSlug': typeof AuthedWorkspacesWorkspaceSlugRouteWithChildren
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authed': typeof AuthedRouteWithChildren
+  '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/workspaces/$workspaceSlug': typeof AuthedWorkspacesWorkspaceSlugRouteWithChildren
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/consent'
     | '/login'
     | '/workspaces/$workspaceSlug'
     | '/workspaces/'
@@ -102,6 +112,7 @@ export interface FileRouteTypes {
     | '/workspaces/$workspaceSlug/notes/$noteId/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/consent'
     | '/login'
     | '/'
     | '/workspaces/$workspaceSlug'
@@ -111,6 +122,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authed'
+    | '/consent'
     | '/login'
     | '/_authed/'
     | '/_authed/workspaces/$workspaceSlug'
@@ -122,6 +134,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthedRoute: typeof AuthedRouteWithChildren
+  ConsentRoute: typeof ConsentRoute
   LoginRoute: typeof LoginRoute
 }
 
@@ -132,6 +145,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consent': {
+      id: '/consent'
+      path: '/consent'
+      fullPath: '/consent'
+      preLoaderRoute: typeof ConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authed': {
@@ -237,6 +257,7 @@ const AuthedRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   AuthedRoute: AuthedRouteWithChildren,
+  ConsentRoute: ConsentRoute,
   LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport

@@ -3,23 +3,11 @@ import type { Hono } from "hono";
 import type { Variables } from "@/routes/types";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = fileURLToPath(new URL(".", import.meta.url));
-
-/**
- * Find the static files root directory.
- *
- * For production builds only: Resolves to apps/server/dist/public
- * This directory must exist for the server to function properly.
- */
-function findStaticRoot(): string {
-  return join(__dirname, "public");
-}
+import { resolvePublicDir } from "@/config-resolver";
 
 export function setupStatic(app: Hono<{ Variables: Variables }>) {
-  // Resolve static root once for all routes
-  const staticRoot = findStaticRoot();
+  // Resolve static root using config resolver (env var > config file > default)
+  const staticRoot = resolvePublicDir();
 
   // Serve static assets from dist/public directory
   app.use("/assets/*", serveStatic({ root: staticRoot }));

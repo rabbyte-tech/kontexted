@@ -9,7 +9,7 @@ if (!process.env.DATABASE_URL && dialect === "postgresql") {
 
 // Use relative paths - drizzle-kit resolves them from the config file location
 const schemaPath = `./src/db/schema/${dialect}/index.ts`;
-const migrationsPath = `./migrations/${dialect}`;
+const migrationsPath = `./src/migrations/${dialect}`;
 
 export default defineConfig({
   schema: schemaPath,

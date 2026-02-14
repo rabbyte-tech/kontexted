@@ -23,11 +23,36 @@ app.get("/", requireAuth, async (c) => {
   const encoder = new TextEncoder();
   const request = c.req.raw;
 
+  // MOVED OUTSIDE ReadableStream - accessible by both start and cancel
+  let closed = false;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let unsubscribe: (() => void) | null = null;
+  let abortListener: (() => void) | null = null;
+
+  // MOVED OUTSIDE ReadableStream - cleanup function accessible by cancel
+  const cleanup = () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
+    if (unsubscribe) {
+      unsubscribe();
+      unsubscribe = null;
+    }
+    if (abortListener) {
+      request.signal.removeEventListener("abort", abortListener);
+      abortListener = null;
+    }
+    // Note: Don't close controller here - let cancel/start handle that
+  };
+
   const stream = new ReadableStream({
     start(controller) {
-      let closed = false;
-      let abortListener: (() => void) | null = null;
-
       const sendEvent = (payload: { type: string; data: unknown }) => {
         if (closed) {
           return;
@@ -38,54 +63,53 @@ app.get("/", requireAuth, async (c) => {
           );
         } catch (error) {
           console.error(`[SSE] Error enqueueing event of type '${payload.type}':`, error);
-          close();
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            // Controller already closed
+          }
         }
       };
 
-      const unsubscribe = workspaceEventHub.subscribe(workspaceIdValue, (event) => {
+      unsubscribe = workspaceEventHub.subscribe(workspaceIdValue, (event) => {
         sendEvent({ type: event.type, data: event.data });
       });
 
-      const heartbeat = setInterval(() => {
-        if (!closed) {
-          try {
-            controller.enqueue(encoder.encode(": ping\n\n"));
-          } catch (error) {
-            console.error("[SSE] Error enqueueing heartbeat:", error);
-            close();
-          }
-        }
-      }, 15000);
-
-      sendEvent({ type: "ready", data: { ok: true } });
-
-      const close = () => {
+      heartbeat = setInterval(() => {
         if (closed) {
           return;
         }
-        closed = true;
-        clearInterval(heartbeat);
-        unsubscribe();
-        if (abortListener) {
-          request.signal.removeEventListener("abort", abortListener);
-          abortListener = null;
-        }
         try {
-          controller.close();
+          controller.enqueue(encoder.encode(": ping\n\n"));
         } catch (error) {
-          console.error("[SSE] Error closing controller:", error);
-          // Controller already closed or errored, which is fine
+          console.error("[SSE] Error enqueueing heartbeat:", error);
+          cleanup();
+          try {
+            controller.close();
+          } catch {
+            // Controller already closed
+          }
         }
-      };
+      }, 10000);
+
+      sendEvent({ type: "ready", data: { ok: true } });
 
       const handleAbort = () => {
-        close();
+        cleanup();
+        try {
+          controller.close();
+        } catch {
+          // Controller already closed
+        }
       };
       abortListener = handleAbort;
       request.signal.addEventListener("abort", handleAbort, { once: true });
     },
     cancel(reason) {
-      console.error("[SSE] Stream canceled by client:", reason);
+      console.debug("[SSE] Stream canceled:", reason);
+      cleanup();
+      // Note: Controller is automatically closed when cancel is called
     },
   });
 
@@ -93,7 +117,7 @@ app.get("/", requireAuth, async (c) => {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 });

@@ -458,7 +458,7 @@ export class ApiClient {
    * Get MCP server info
    */
   getMcpUrl(): string {
-    return "/api/mcp";
+    return "/mcp";
   }
 
   /**
