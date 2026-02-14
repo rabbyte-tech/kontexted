@@ -308,17 +308,15 @@ jobs:
 
           # Create the package archive
           npm pack
-
-          # Verify the package
-          tar -tzf "kontexted-${VERSION}.tgz"
-
-          mv "kontexted-${VERSION}.tgz" ../
+          
+          # Verify the package was created
+          ls -la kontexted-*.tgz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: kontexted-cli
-          path: kontexted-*.tgz
+          path: apps/cli/kontexted-*.tgz
           retention-days: 5
 
   # ===========================================================================
@@ -370,7 +368,6 @@ jobs:
       - name: Publish CLI to npm
         run: |
           VERSION=${{ needs.prepare.outputs.version }}
-          cd artifacts/kontexted-cli
-          CLI_TARBALL=$(ls *.tgz | head -1)
+          CLI_TARBALL=$(ls artifacts/kontexted-cli/kontexted-*.tgz | head -1)
           echo "Publishing kontexted CLI..."
           npm publish "$CLI_TARBALL" --access public
