@@ -70,22 +70,24 @@ async function buildForArch(arch: Arch): Promise<{ arch: Arch; success: boolean;
     let result;
     if (needsTarget) {
       // Attempt cross-compilation (will likely fail, but try anyway)
-      result = await $`bun build ${join(ROOT_DIR, "src/index.ts")} --compile --target=${arch} --outfile ${OUTPUT_PATH}`.quiet();
+      result = await $`bun build ${join(ROOT_DIR, "src/index.ts")} --compile --target=${arch} --outfile ${OUTPUT_PATH}`;
     } else {
-      result = await $`bun build ${join(ROOT_DIR, "src/index.ts")} --compile --outfile ${OUTPUT_PATH}`.quiet();
+      result = await $`bun build ${join(ROOT_DIR, "src/index.ts")} --compile --outfile ${OUTPUT_PATH}`;
     }
 
     if (result.exitCode === 0) {
       console.log(`[build] ✓ ${arch}: Success`);
       return { arch, success: true };
     } else {
-      const error = result.stderr.toString() || "Unknown error";
-      console.log(`[build] ✗ ${arch}: Failed - ${error.slice(0, 100)}`);
+      const error = result.stderr.toString() || result.stdout.toString() || "Unknown error";
+      console.log(`[build] ✗ ${arch}: Failed`);
+      console.log(error);
       return { arch, success: false, error };
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    console.log(`[build] ✗ ${arch}: Failed - ${error.slice(0, 100)}`);
+    console.log(`[build] ✗ ${arch}: Failed`);
+    console.log(error);
     return { arch, success: false, error };
   }
 }

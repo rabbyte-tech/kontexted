@@ -48,6 +48,7 @@ async function buildForArch(arch: Arch): Promise<{ arch: Arch; success: boolean;
   const OUTPUT_PATH = join(ARCH_BUILD_DIR, "bin", "kontexted-migrate");
 
   console.log(`\n[build:migrate] Building for ${arch}...`);
+  console.log(`[build:migrate] Output: ${OUTPUT_PATH}`);
 
   mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
 
@@ -57,22 +58,24 @@ async function buildForArch(arch: Arch): Promise<{ arch: Arch; success: boolean;
     
     let result;
     if (needsTarget) {
-      result = await $`bun build ${join(ROOT_DIR, "src/db/migrate.mjs")} --compile --target=${arch} --outfile ${OUTPUT_PATH}`.quiet();
+      result = await $`bun build ${join(ROOT_DIR, "src/db/migrate.mjs")} --compile --target=${arch} --outfile ${OUTPUT_PATH}`;
     } else {
-      result = await $`bun build ${join(ROOT_DIR, "src/db/migrate.mjs")} --compile --outfile ${OUTPUT_PATH}`.quiet();
+      result = await $`bun build ${join(ROOT_DIR, "src/db/migrate.mjs")} --compile --outfile ${OUTPUT_PATH}`;
     }
 
     if (result.exitCode === 0) {
       console.log(`[build:migrate] ✓ ${arch}: Success`);
       return { arch, success: true };
     } else {
-      const error = result.stderr.toString() || "Unknown error";
-      console.log(`[build:migrate] ✗ ${arch}: Failed - ${error.slice(0, 100)}`);
+      const error = result.stderr.toString() || result.stdout.toString() || "Unknown error";
+      console.log(`[build:migrate] ✗ ${arch}: Failed`);
+      console.log(error);
       return { arch, success: false, error };
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    console.log(`[build:migrate] ✗ ${arch}: Failed - ${error.slice(0, 100)}`);
+    console.log(`[build:migrate] ✗ ${arch}: Failed`);
+    console.log(error);
     return { arch, success: false, error };
   }
 }
