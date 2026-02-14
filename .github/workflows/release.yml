@@ -142,7 +142,7 @@ jobs:
         run: |
           VERSION=${{ needs.prepare.outputs.version }}
           ARCH=darwin-arm64
-          PKG_NAME="@kontexted/${ARCH}"
+          PKG_NAME="${ARCH}"
 
           cd build/${ARCH}
           tar -czf "../../${PKG_NAME}-${VERSION}.tar.gz" .
@@ -155,7 +155,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NPM_SCOPE }}-darwin-arm64
-          path: ${{ env.NPM_SCOPE }}-darwin-arm64-*.tar.gz
+          path: darwin-arm64-*.tar.gz
           retention-days: 5
 
   build-linux-x64:
@@ -200,7 +200,7 @@ jobs:
         run: |
           VERSION=${{ needs.prepare.outputs.version }}
           ARCH=linux-x64
-          PKG_NAME="@kontexted/${ARCH}"
+          PKG_NAME="${ARCH}"
 
           cd build/${ARCH}
           tar -czf "../../${PKG_NAME}-${VERSION}.tar.gz" .
@@ -212,7 +212,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NPM_SCOPE }}-linux-x64
-          path: ${{ env.NPM_SCOPE }}-linux-x64-*.tar.gz
+          path: linux-x64-*.tar.gz
           retention-days: 5
 
   build-windows-x64:
@@ -258,7 +258,7 @@ jobs:
         run: |
           VERSION=${{ needs.prepare.outputs.version }}
           ARCH=windows-x64
-          PKG_NAME="@kontexted/${ARCH}"
+          PKG_NAME="${ARCH}"
 
           cd build/${ARCH}
           tar -czf "../../${PKG_NAME}-${VERSION}.tar.gz" .
@@ -270,7 +270,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NPM_SCOPE }}-windows-x64
-          path: ${{ env.NPM_SCOPE }}-windows-x64-*.tar.gz
+          path: windows-x64-*.tar.gz
           retention-days: 5
 
   # ===========================================================================
@@ -357,17 +357,12 @@ jobs:
           cd artifacts
 
           for arch in darwin-arm64 linux-x64 windows-x64; do
-            PKG_DIR="@kontexted-${arch}"
-            if [ -d "$PKG_DIR" ]; then
-              TARBALL=$(ls "${PKG_DIR}/@kontexted-${arch}-${VERSION}.tar.gz" 2>/dev/null || ls "${PKG_DIR}"/*.tar.gz 2>/dev/null | head -1)
-              if [ -n "$TARBALL" ]; then
-                echo "Publishing @kontexted/${arch}..."
-                npm publish "$TARBALL" --access public
-              else
-                echo "Warning: No tarball found for @kontexted/${arch}"
-              fi
+            TARBALL="${arch}/${arch}-${VERSION}.tar.gz"
+            if [ -f "$TARBALL" ]; then
+              echo "Publishing @kontexted/${arch}..."
+              npm publish "$TARBALL" --access public
             else
-              echo "Warning: Directory $PKG_DIR not found"
+              echo "Warning: Tarball not found for @kontexted/${arch}"
             fi
           done
 
