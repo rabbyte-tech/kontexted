@@ -341,7 +341,14 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-          token: ${{ secrets.NPM_TOKEN }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Debug npm auth
+        run: |
+          echo "Token length: $(echo -n "${{ secrets.NPM_TOKEN }}" | wc -c)"
+          echo "NODE_AUTH_TOKEN length: $(echo -n "$NODE_AUTH_TOKEN" | wc -c)"
+          cat ~/.npmrc 2>/dev/null || echo "No .npmrc found"
 
       - name: Verify npm authentication
         run: |
@@ -352,6 +359,7 @@ jobs:
       - name: Publish platform packages to npm
         run: |
           VERSION=${{ needs.prepare.outputs.version }}
+          npm config set loglevel debug
           cd artifacts
 
           for arch in darwin-arm64 linux-x64 windows-x64; do
@@ -360,11 +368,9 @@ jobs:
             
             if [ -f "$ARCH_DIR/$TARBALL" ]; then
               echo "Publishing @kontexted/${arch}..."
-              # Extract the tarball
               tar -xzf "$ARCH_DIR/$TARBALL" -C "$ARCH_DIR"
-              # Now publish from extracted directory (package.json is inside at root)
               cd "$ARCH_DIR"
-              npm publish --access public
+              npm publish --access public 2>&1 | tee npm-publish.log
               cd ..
             else
               echo "Warning: Tarball not found: $ARCH_DIR/$TARBALL"
