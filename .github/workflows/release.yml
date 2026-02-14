@@ -356,13 +356,19 @@ jobs:
 
           for arch in darwin-arm64 linux-x64 windows-x64; do
             ARCH_DIR="@kontexted-${arch}"
-            if [ -d "$ARCH_DIR" ]; then
+            TARBALL="${arch}-${VERSION}.tar.gz"
+            
+            if [ -f "$ARCH_DIR/$TARBALL" ]; then
               echo "Publishing @kontexted/${arch}..."
+              # Extract the tarball
+              tar -xzf "$ARCH_DIR/$TARBALL" -C "$ARCH_DIR"
+              # Now publish from extracted directory (package.json is inside at root)
               cd "$ARCH_DIR"
               npm publish --access public
               cd ..
             else
-              echo "Warning: Directory not found for @kontexted/${arch}"
+              echo "Warning: Tarball not found: $ARCH_DIR/$TARBALL"
+              ls -la "$ARCH_DIR/"
             fi
           done
 
