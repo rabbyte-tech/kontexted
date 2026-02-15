@@ -1,7 +1,7 @@
 import { runMigration } from '@/lib/server';
 import { isPlatformSupported, getPlatform, getMigratePath, configExists } from '@/lib/server';
 
-const DOCKER_URL = 'https://hub.docker.com/r/kontexted/kontexted';
+const DOCKER_URL = 'https://hub.docker.com/r/rabbyte-tech/kontexted';
 
 export const command = 'migrate';
 export const desc = 'Run database migrations';

@@ -9,7 +9,7 @@ import {
 } from '@/lib/server';
 import { CONFIG_FILE, DATA_DIR } from '@/lib/server/constants';
 
-const DOCKER_URL = 'https://hub.docker.com/r/kontexted/kontexted';
+const DOCKER_URL = 'https://hub.docker.com/r/rabbyte-tech/kontexted';
 
 // ============ Yargs Command Module ============
 

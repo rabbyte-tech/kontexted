@@ -128,7 +128,7 @@ async function assembleForArch(arch: Arch, version: string): Promise<{ arch: Arc
     files: ["bin/", "public/", "migrations/"],
     repository: {
       type: "git",
-      url: "https://github.com/kontexted/kontexted.git",
+      url: "https://github.com/rabbyte-tech/kontexted.git",
       directory: "apps/server",
     },
     license: "MIT",

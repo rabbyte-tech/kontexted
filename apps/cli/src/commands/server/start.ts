@@ -8,7 +8,7 @@ import {
 } from '@/lib/server';
 import { CONFIG_FILE } from '@/lib/server/constants';
 
-const DOCKER_URL = 'https://hub.docker.com/r/kontexted/kontexted';
+const DOCKER_URL = 'https://hub.docker.com/r/rabbyte-tech/kontexted';
 
 function checkPrerequisites(): { valid: boolean; error?: string } {
   if (!isPlatformSupported()) {

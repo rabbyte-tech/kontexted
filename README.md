@@ -1,7 +1,7 @@
 # Kontexted
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Status: Alpha](https://img.shields.io/badge/Status-Alpha%2FEarly%20Access-orange.svg)](https://github.com/kontexted/kontexted)
+[![Status: Alpha](https://img.shields.io/badge/Status-Alpha%2FEarly%20Access-orange.svg)](https://github.com/rabbyte-tech/kontexted)
 
 **Collaborative markdown knowledge base for AI-assisted development.**
 
@@ -64,7 +64,7 @@ Get Kontexted running in minutes with Docker Compose.
 ### Start Kontexted (SQLite - Simplest)
 
 ```bash
-git clone https://github.com/kontexted/kontexted.git
+git clone https://github.com/rabbyte-tech/kontexted.git
 cd kontexted
 docker-compose up -d
 ```
@@ -72,7 +72,7 @@ docker-compose up -d
 ### Start Kontexted (PostgreSQL - Multi-user)
 
 ```bash
-git clone https://github.com/kontexted/kontexted.git
+git clone https://github.com/rabbyte-tech/kontexted.git
 cd kontexted
 docker-compose -f deploy/docker-compose.postgres.yml up -d
 ```
@@ -168,7 +168,7 @@ The repository includes multiple Docker Compose configurations:
 1. **Clone and install dependencies:**
 
 ```bash
-git clone https://github.com/kontexted/kontexted.git
+git clone https://github.com/rabbyte-tech/kontexted.git
 cd kontexted
 make install
 ```
@@ -315,5 +315,5 @@ Use the Makefile for common development tasks:
 
 ## Links
 
-- [GitHub Repository](https://github.com/kontexted/kontexted)
-- [Issues & Bug Reports](https://github.com/kontexted/kontexted/issues)
+- [GitHub Repository](https://github.com/rabbyte-tech/kontexted)
+- [Issues & Bug Reports](https://github.com/rabbyte-tech/kontexted/issues)
