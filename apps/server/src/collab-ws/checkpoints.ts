@@ -2,14 +2,13 @@ import * as Y from "yjs";
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
-import { db } from "@/db";
+import { db, dialect } from "@/db";
 import { noteLineBlame, notes, revisions } from "@/db/schema";
 import type * as sqliteSchema from "@/db/schema/sqlite";
 import { getRoom } from "./y-websocket-server";
 
 type DbSchema = typeof import("@/db/schema").schema;
 
-const dialect = process.env.DATABASE_DIALECT === "sqlite" ? "sqlite" : "postgresql";
 
 const DEBOUNCE_MS = 5000;
 

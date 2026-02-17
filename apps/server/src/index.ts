@@ -6,7 +6,7 @@ import { upgradeWebSocket, websocket } from 'hono/bun';
 import type { ServerWebSocket } from 'bun';
 import { auth } from '@/auth';
 import { db } from '@/db';
-import { resolveConfig, getConfigSource } from '@/config-resolver';
+import { config, getConfigSource } from '@/config';
 
 import { getToken, verifyToken } from '@/collab-ws/auth';
 import {
@@ -33,16 +33,6 @@ import { GET as oauthAuthorizationServerGet } from '@/routes/.well-known/oauth-a
 import { GET as openidConfigGet } from '@/routes/.well-known/openid-configuration';
 import { GET as oauthProtectedResourceGet } from '@/routes/.well-known/oauth-protected-resource';
 
-// Resolve configuration
-const config = resolveConfig();
-
-// Set global config for other modules to access
-// This allows database.ts, auth.ts, etc. to use the same config
-declare global {
-  var KONTEXTED_CONFIG: typeof config;
-}
-global.KONTEXTED_CONFIG = config;
-
 // Import Variables type for typing the Hono app
 import type { Variables } from '@/routes/types';
 
@@ -54,10 +44,8 @@ app.use(logger());
 app.use(prettyJSON());
 app.use(cors({
   origin: (origin) => {
-    // Parse BETTER_AUTH_TRUSTED_ORIGINS if available
-    const trustedOrigins = process.env.BETTER_AUTH_TRUSTED_ORIGINS
-      ? process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(',').map(o => o.trim())
-      : [];
+    // Use trusted origins from config (already an array or undefined)
+    const trustedOrigins = config.server.trustedOrigins ?? [];
     
     // Check if origin is in trusted origins
     if (origin && trustedOrigins.includes(origin)) {

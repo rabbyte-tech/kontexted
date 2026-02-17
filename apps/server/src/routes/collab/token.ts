@@ -11,18 +11,7 @@ import { isRecord } from "@/routes/types";
 const TOKEN_TTL_SECONDS = 10 * 60;
 
 const getTokenSecret = () => {
-  const secret =
-    process.env.COLLAB_TOKEN_SECRET ??
-    (process.env.NODE_ENV === "production" ? null : "dev-secret");
-
-  if (!secret) {
-    throw new Error("COLLAB_TOKEN_SECRET is required in production");
-  }
-
-  if (!process.env.COLLAB_TOKEN_SECRET && process.env.NODE_ENV !== "production") {
-    console.warn("COLLAB_TOKEN_SECRET not set; using dev-secret");
-  }
-
+  const secret = global.KONTEXTED_CONFIG.collab.tokenSecret;
   return new TextEncoder().encode(secret);
 };
 

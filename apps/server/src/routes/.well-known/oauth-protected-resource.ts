@@ -9,8 +9,11 @@ export async function GET(c: Context<{ Variables: Variables }>) {
   // Get server base URL from config
   const config = global.KONTEXTED_CONFIG || {
     server: {
-      host: process.env.HOST || 'localhost',
-      port: parseInt(process.env.PORT || '4242', 10),
+      host: 'localhost',
+      port: 4242,
+    },
+    auth: {
+      betterAuthUrl: undefined,
     },
   };
 
@@ -19,7 +22,7 @@ export async function GET(c: Context<{ Variables: Variables }>) {
       ? 'localhost'
       : config.server.host;
 
-  const protocol = process.env.BETTER_AUTH_URL?.startsWith('https') ? 'https' : 'http';
+  const protocol = config.auth?.betterAuthUrl?.startsWith('https') ? 'https' : 'http';
   const baseURL = `${protocol}://${configHost}:${config.server.port}`;
 
   // Get the resource path from the request URL (if it includes trailing path segments)

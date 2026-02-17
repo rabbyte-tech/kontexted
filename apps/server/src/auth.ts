@@ -16,30 +16,27 @@ import {
   jwks,
 } from "@/db/schema";
 
-// Get auth base URL from environment or config
+// Get auth base URL from config
 function getAuthBaseURL(): string {
-  // Priority 1: BETTER_AUTH_URL env var (for production/reverse proxy scenarios)
-  if (process.env.BETTER_AUTH_URL) {
-    console.log(`[auth] Using BETTER_AUTH_URL: ${process.env.BETTER_AUTH_URL}`);
-    return process.env.BETTER_AUTH_URL;
+  const config = global.KONTEXTED_CONFIG;
+
+  // Priority 1: betterAuthUrl from config (for production/reverse proxy scenarios)
+  if (config?.auth?.betterAuthUrl) {
+    console.log(`[auth] Using betterAuthUrl: ${config.auth.betterAuthUrl}`);
+    return config.auth.betterAuthUrl;
   }
 
   // Priority 2: Construct from server config (default for local dev)
-  const config = global.KONTEXTED_CONFIG || {
-    server: {
-      host: process.env.HOST || 'localhost',
-      port: parseInt(process.env.PORT || '4242', 10),
-    },
-  };
-  const configHost = config.server.host === "0.0.0.0" || config.server.host === "::" ? "localhost" : config.server.host;
-  const baseURL = `http://${configHost}:${config.server.port}`;
+  const serverConfig = config?.server || { host: 'localhost', port: 4242 };
+  const configHost = serverConfig.host === "0.0.0.0" || serverConfig.host === "::" ? "localhost" : serverConfig.host;
+  const baseURL = `http://${configHost}:${serverConfig.port}`;
   console.log(`[auth] Using config-based URL: ${baseURL}`);
   return baseURL;
 }
 
 const baseURL = getAuthBaseURL();
 
-const authMethod = process.env.AUTH_METHOD || "email-password";
+const authMethod = global.KONTEXTED_CONFIG?.auth?.method || "email-password";
 
 const plugins: any[] = [
   jwt(),
@@ -56,9 +53,10 @@ const plugins: any[] = [
 ];
 
 if (authMethod === "keycloak") {
-  const keycloakId = process.env.AUTH_KEYCLOAK_ID;
-  const keycloakSecret = process.env.AUTH_KEYCLOAK_SECRET;
-  const keycloakIssuer = process.env.AUTH_KEYCLOAK_ISSUER;
+  const keycloakConfig = global.KONTEXTED_CONFIG?.auth?.keycloak;
+  const keycloakId = keycloakConfig?.clientId;
+  const keycloakSecret = keycloakConfig?.clientSecret;
+  const keycloakIssuer = keycloakConfig?.issuer;
 
   if (keycloakId && keycloakSecret && keycloakIssuer) {
     plugins.push(

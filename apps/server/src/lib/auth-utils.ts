@@ -1,15 +1,17 @@
 /**
  * Get the base URL for authentication endpoints.
- * Uses BETTER_AUTH_URL environment variable if set, otherwise constructs from HOST/PORT.
+ * Uses betterAuthUrl from config if set, otherwise constructs from server host/port.
  */
 export function getAuthBaseUrl(): string {
-  if (process.env.BETTER_AUTH_URL) {
-    return process.env.BETTER_AUTH_URL;
+  const config = global.KONTEXTED_CONFIG;
+
+  if (config.auth.betterAuthUrl) {
+    return config.auth.betterAuthUrl;
   }
 
-  const rawHost = process.env.HOST || "localhost";
+  const rawHost = config.server.host;
   const host = rawHost === "0.0.0.0" || rawHost === "::" ? "localhost" : rawHost;
-  const port = process.env.PORT || "4242";
+  const port = config.server.port;
 
   return `http://${host}:${port}`;
 }

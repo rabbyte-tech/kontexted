@@ -4,24 +4,9 @@ import Database from "bun:sqlite";
 import { Pool } from "pg";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { config } from "@/config";
 import "dotenv/config";
 
-// Get config from global or fallback to env
-function getConfig() {
-  if (global.KONTEXTED_CONFIG) {
-    return global.KONTEXTED_CONFIG;
-  }
-
-  // Fallback for direct imports before config is set
-  return {
-    database: {
-      dialect: (process.env.DATABASE_DIALECT || 'sqlite') as 'sqlite' | 'postgresql',
-      url: process.env.DATABASE_URL || './data/kontexted.db',
-    },
-  };
-}
-
-const config = getConfig();
 const dialect = config.database.dialect;
 
 let db: ReturnType<typeof drizzlePg>;
@@ -31,7 +16,7 @@ if (dialect === "sqlite") {
   mkdirSync(dirname(dbPath), { recursive: true });
   const sqlite = new Database(dbPath, { create: true });
   db = drizzleSqlite({ client: sqlite }) as unknown as ReturnType<typeof drizzlePg>;
- } else {
+} else {
   if (!config.database.url) {
     throw new Error("DATABASE_URL is required for PostgreSQL");
   }

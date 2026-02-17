@@ -63,7 +63,7 @@ export const handler = async (argv: { foreground?: boolean }) => {
     
     // Load config to get host and port
     const config = loadConfig();
-    const host = config?.server.host || '127.0.0.1';
+    const host = config?.server.host || 'localhost';
     const port = config?.server.port || 4729;
     const url = `http://${host}:${port}`;
     

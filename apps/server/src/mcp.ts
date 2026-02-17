@@ -2,7 +2,7 @@ import { mcpHandler } from "@better-auth/oauth-provider";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
-import { db } from "@/db";
+import { db, dialect } from "@/db";
 import { notes, folders } from "@/db/schema";
 import { and, eq, ilike, or, asc, sql } from "drizzle-orm";
 import { parseSlug, parsePublicId } from "@/lib/params";
@@ -25,7 +25,6 @@ import {
   DuplicateError,
 } from "@/lib/write-operations";
 
-const dialect = process.env.DATABASE_DIALECT === "sqlite" ? "sqlite" : "postgresql";
 
 /**
  * Case-insensitive LIKE that works with both PostgreSQL and SQLite

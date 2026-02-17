@@ -11,7 +11,7 @@ import {
   transformFolderTree,
   transformWorkspaceTree,
 } from "@/lib/workspace-tree-transform";
-import { db } from "@/db";
+import { db, dialect } from "@/db";
 import { notes, folders } from "@/db/schema";
 import { and, eq, ilike, or, asc, sql } from "drizzle-orm";
 import {
@@ -23,7 +23,6 @@ import {
   DuplicateError,
 } from "@/lib/write-operations";
 
-const dialect = process.env.DATABASE_DIALECT === "sqlite" ? "sqlite" : "postgresql";
 
 /**
  * Case-insensitive LIKE that works with both PostgreSQL and SQLite

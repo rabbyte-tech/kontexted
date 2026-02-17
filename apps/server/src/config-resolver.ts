@@ -18,6 +18,7 @@ export interface ServerConfig {
   server: {
     port: number;
     host: string;
+    trustedOrigins?: string[];
   };
   logging: {
     level: 'debug' | 'info' | 'warn' | 'error';
@@ -27,7 +28,14 @@ export interface ServerConfig {
   };
   auth: {
     betterAuthSecret: string;
+    betterAuthUrl?: string;
     inviteCode: string;
+    method?: 'email-password' | 'keycloak';
+    keycloak?: {
+      clientId: string;
+      clientSecret: string;
+      issuer: string;
+    };
   };
   paths?: {
     publicDir?: string;
@@ -60,7 +68,7 @@ function getDefaults(): ServerConfig {
     },
     server: {
       port: 3000,
-      host: '127.0.0.1',
+      host: 'localhost',
     },
     logging: {
       level: 'info',
@@ -70,7 +78,10 @@ function getDefaults(): ServerConfig {
     },
     auth: {
       betterAuthSecret: randomBytes(32).toString('hex'),
+      betterAuthUrl: undefined,
       inviteCode: generateInviteCode(),
+      method: 'email-password',
+      keycloak: undefined,
     },
   };
 }
@@ -101,6 +112,31 @@ function loadFromEnv(): ServerConfig | null {
     throw new Error('BETTER_AUTH_SECRET is required in production');
   }
 
+  // Parse trusted origins from comma-separated string
+  const trustedOriginsStr = process.env.BETTER_AUTH_TRUSTED_ORIGINS;
+  const trustedOrigins = trustedOriginsStr
+    ? trustedOriginsStr.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : undefined;
+
+  // Build keycloak config if all required env vars are present
+  const keycloakClientId = process.env.AUTH_KEYCLOAK_ID;
+  const keycloakClientSecret = process.env.AUTH_KEYCLOAK_SECRET;
+  const keycloakIssuer = process.env.AUTH_KEYCLOAK_ISSUER;
+  const keycloak = keycloakClientId && keycloakClientSecret && keycloakIssuer
+    ? {
+        clientId: keycloakClientId,
+        clientSecret: keycloakClientSecret,
+        issuer: keycloakIssuer,
+      }
+    : undefined;
+
+  const authMethod = (process.env.AUTH_METHOD as 'email-password' | 'keycloak') || 'email-password';
+
+  // Validate keycloak configuration if method is 'keycloak'
+  if (authMethod === 'keycloak' && !keycloak) {
+    throw new Error('AUTH_KEYCLOAK_ID, AUTH_KEYCLOAK_SECRET, and AUTH_KEYCLOAK_ISSUER are required when AUTH_METHOD is "keycloak"');
+  }
+
   return {
     database: {
       dialect: (process.env.DATABASE_DIALECT as 'sqlite' | 'postgresql') || defaults.database.dialect,
@@ -109,6 +145,7 @@ function loadFromEnv(): ServerConfig | null {
     server: {
       port: process.env.PORT ? parseInt(process.env.PORT, 10) : defaults.server.port,
       host: process.env.HOST || defaults.server.host,
+      trustedOrigins,
     },
     logging: {
       level: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || defaults.logging.level,
@@ -118,7 +155,10 @@ function loadFromEnv(): ServerConfig | null {
     },
     auth: {
       betterAuthSecret: betterAuthSecret || defaults.auth.betterAuthSecret,
+      betterAuthUrl: process.env.BETTER_AUTH_URL || undefined,
       inviteCode: process.env.INVITE_CODE || defaults.auth.inviteCode,
+      method: authMethod,
+      keycloak,
     },
     paths: {
       publicDir: process.env.KONTEXTED_PUBLIC_DIR,
@@ -162,6 +202,32 @@ function loadFromFile(): ServerConfig | null {
 
     const defaults = getDefaults();
 
+    // Parse trusted origins from array or comma-separated string
+    let trustedOrigins: string[] | undefined;
+    if (parsed.server?.trustedOrigins) {
+      if (Array.isArray(parsed.server.trustedOrigins)) {
+        trustedOrigins = parsed.server.trustedOrigins.filter((origin: unknown): origin is string => typeof origin === 'string');
+      } else if (typeof parsed.server.trustedOrigins === 'string') {
+        trustedOrigins = parsed.server.trustedOrigins.split(',').map((o: string) => o.trim()).filter(Boolean);
+      }
+    }
+
+    // Build keycloak config from file
+    const keycloak = parsed.auth?.keycloak
+      ? {
+          clientId: parsed.auth.keycloak.clientId,
+          clientSecret: parsed.auth.keycloak.clientSecret,
+          issuer: parsed.auth.keycloak.issuer,
+        }
+      : undefined;
+
+    const authMethod = parsed.auth?.method || 'email-password';
+
+    // Validate keycloak configuration if method is 'keycloak'
+    if (authMethod === 'keycloak' && !keycloak) {
+      throw new Error('auth.keycloak configuration is required when auth.method is "keycloak"');
+    }
+
     return {
       database: {
         dialect: parsed.database.dialect || 'sqlite',
@@ -170,6 +236,7 @@ function loadFromFile(): ServerConfig | null {
       server: {
         port: parsed.server.port || 3000,
         host: parsed.server.host || '127.0.0.1',
+        trustedOrigins,
       },
       logging: {
         level: parsed.logging?.level || 'info',
@@ -179,7 +246,10 @@ function loadFromFile(): ServerConfig | null {
       },
       auth: {
         betterAuthSecret: betterAuthSecret || defaults.auth.betterAuthSecret,
+        betterAuthUrl: parsed.auth?.betterAuthUrl,
         inviteCode: parsed.auth?.inviteCode || defaults.auth.inviteCode,
+        method: authMethod,
+        keycloak,
       },
       paths: {
         publicDir: parsed.paths?.publicDir,

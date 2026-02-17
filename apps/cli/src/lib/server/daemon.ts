@@ -1,8 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { mkdirSync, closeSync, openSync } from 'fs';
-import { dirname } from 'path';
 import { getBinaryPath } from './binary.js';
+import { loadConfig } from './config.js';
 import { LOG_FILE, PID_FILE, LOGS_DIR, KONTEXTED_DIR } from './constants.js';
 
 /**
@@ -69,6 +69,39 @@ export async function startServer(options: { foreground?: boolean } = {}): Promi
 
   ensureDirectories();
 
+  // Load config to get server host/port for Better Auth environment variables
+  const config = loadConfig();
+  const host = config?.server.host || 'localhost';
+  const port = config?.server.port || 4729;
+  const serverUrl = `http://${host}:${port}`;
+
+  // Build the trusted origins list from config or fall back to server URL
+  const trustedOrigins = config?.server.trustedOrigins?.length
+    ? config.server.trustedOrigins.join(',')
+    : serverUrl;
+
+  // Resolve the Better Auth URL (explicit config, or derived from host/port)
+  const betterAuthUrl = config?.auth.betterAuthUrl || serverUrl;
+
+  // Build environment variables for the server process
+  const serverEnv: Record<string, string> = {
+    ...process.env as Record<string, string>,
+    BETTER_AUTH_URL: betterAuthUrl,
+    BETTER_AUTH_TRUSTED_ORIGINS: process.env.BETTER_AUTH_TRUSTED_ORIGINS || trustedOrigins,
+  };
+
+  // Auth method configuration
+  if (config?.auth.method) {
+    serverEnv.AUTH_METHOD = config.auth.method;
+  }
+
+  // Keycloak OAuth configuration
+  if (config?.auth.keycloak) {
+    serverEnv.KEYCLOAK_CLIENT_ID = config.auth.keycloak.clientId;
+    serverEnv.KEYCLOAK_CLIENT_SECRET = config.auth.keycloak.clientSecret;
+    serverEnv.KEYCLOAK_ISSUER = config.auth.keycloak.issuer;
+  }
+
   // Check if already running
   const existingPid = getPid();
   if (existingPid && isRunning(existingPid)) {
@@ -83,6 +116,7 @@ export async function startServer(options: { foreground?: boolean } = {}): Promi
       const child = spawn(binaryPath, [], {
         stdio: 'inherit',
         detached: false,
+        env: serverEnv,
       });
 
       child.on('error', (error) => {
@@ -106,7 +140,7 @@ export async function startServer(options: { foreground?: boolean } = {}): Promi
     const child = spawn(binaryPath, [], {
       stdio: ['ignore', logFd, logFd], // Use file descriptor, not stream
       detached: true,
-      env: { ...process.env },
+      env: serverEnv,
     });
 
     // Close the file descriptor in parent - child has its own copy

@@ -52,8 +52,8 @@ async function runInit(interactive: boolean): Promise<void> {
       const portAnswer = await promptQuestion(rl, 'Server port [4729]: ');
       const port = parseInt(portAnswer.trim(), 10) || 4729;
 
-      const hostAnswer = await promptQuestion(rl, 'Server host [127.0.0.1]: ');
-      const host = hostAnswer.trim() || '127.0.0.1';
+      const hostAnswer = await promptQuestion(rl, 'Server host [localhost]: ');
+      const host = hostAnswer.trim() || 'localhost';
 
       const levelAnswer = await promptQuestion(rl, 'Log level (debug/info/warn/error) [info]: ');
       const level = (levelAnswer.trim().toLowerCase() || 'info') as 'debug' | 'info' | 'warn' | 'error';
@@ -64,12 +64,17 @@ async function runInit(interactive: boolean): Promise<void> {
       const defaultConfig = getDefaultConfig();
       const config: ServerConfig = {
         database: { dialect, url: databaseUrl },
-        server: { port, host },
+        server: { 
+          port, 
+          host,
+          trustedOrigins: defaultConfig.server.trustedOrigins,
+        },
         logging: { level },
         collab: { tokenSecret: defaultConfig.collab.tokenSecret },
         auth: {
           betterAuthSecret: defaultConfig.auth.betterAuthSecret,
           inviteCode: defaultConfig.auth.inviteCode,
+          method: defaultConfig.auth.method,
         },
         paths: {
           migrationsDir: migrationsDir || undefined,

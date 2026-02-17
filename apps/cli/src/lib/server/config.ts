@@ -19,6 +19,7 @@ export interface ServerConfig {
   server: {
     port: number;
     host: string;
+    trustedOrigins?: string[];
   };
   logging: {
     level: 'debug' | 'info' | 'warn' | 'error';
@@ -28,7 +29,14 @@ export interface ServerConfig {
   };
   auth: {
     betterAuthSecret: string;
+    betterAuthUrl?: string;
     inviteCode: string;
+    method?: 'email-password' | 'keycloak';
+    keycloak?: {
+      clientId: string;
+      clientSecret: string;
+      issuer: string;
+    };
   };
   paths?: {
     publicDir?: string;
@@ -77,7 +85,8 @@ export function getDefaultConfig(): ServerConfig {
     },
     server: {
       port: 4729,
-      host: '127.0.0.1',
+      host: 'localhost',
+      trustedOrigins: [],
     },
     logging: {
       level: 'info',
@@ -88,6 +97,7 @@ export function getDefaultConfig(): ServerConfig {
     auth: {
       betterAuthSecret: generateBetterAuthSecret(),
       inviteCode: generateInviteCode(),
+      method: 'email-password',
     },
   };
 
@@ -132,14 +142,17 @@ export function loadConfig(): ServerConfig | null {
     const betterAuthSecret = parsed.auth?.betterAuthSecret;
     const inviteCode = parsed.auth?.inviteCode;
 
-    return {
+    const config: ServerConfig = {
       database: {
         dialect: parsed.database.dialect || 'sqlite',
         url: parsed.database.url,
       },
       server: {
         port: parsed.server.port || 4729,
-        host: parsed.server.host || '127.0.0.1',
+        host: parsed.server.host || 'localhost',
+        ...(Array.isArray(parsed.server.trustedOrigins) && parsed.server.trustedOrigins.length > 0
+          ? { trustedOrigins: parsed.server.trustedOrigins }
+          : {}),
       },
       logging: {
         level: parsed.logging?.level || 'info',
@@ -150,12 +163,23 @@ export function loadConfig(): ServerConfig | null {
       auth: {
         betterAuthSecret: betterAuthSecret || generateBetterAuthSecret(),
         inviteCode: inviteCode || generateInviteCode(),
+        ...(parsed.auth?.betterAuthUrl ? { betterAuthUrl: parsed.auth.betterAuthUrl } : {}),
+        ...(parsed.auth?.method ? { method: parsed.auth.method } : {}),
+        ...(parsed.auth?.keycloak ? {
+          keycloak: {
+            clientId: parsed.auth.keycloak.clientId,
+            clientSecret: parsed.auth.keycloak.clientSecret,
+            issuer: parsed.auth.keycloak.issuer,
+          },
+        } : {}),
       },
       paths: {
         publicDir: parsed.paths?.publicDir,
         migrationsDir: parsed.paths?.migrationsDir,
       },
     };
+
+    return config;
   } catch (error) {
     console.warn('Failed to load config file:', error instanceof Error ? error.message : 'Unknown error');
     return null;
