@@ -49,8 +49,8 @@ async function runInit(interactive: boolean): Promise<void> {
       const urlAnswer = await promptQuestion(rl, `Database URL [${defaultUrl}]: `);
       const databaseUrl = urlAnswer.trim() || defaultUrl;
 
-      const portAnswer = await promptQuestion(rl, 'Server port [3000]: ');
-      const port = parseInt(portAnswer.trim(), 10) || 3000;
+      const portAnswer = await promptQuestion(rl, 'Server port [4729]: ');
+      const port = parseInt(portAnswer.trim(), 10) || 4729;
 
       const hostAnswer = await promptQuestion(rl, 'Server host [127.0.0.1]: ');
       const host = hostAnswer.trim() || '127.0.0.1';

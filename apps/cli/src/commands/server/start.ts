@@ -5,10 +5,21 @@ import {
   configExists,
   getServerStatus,
   startServer,
+  loadConfig,
 } from '@/lib/server';
 import { CONFIG_FILE } from '@/lib/server/constants';
 
 const DOCKER_URL = 'https://hub.docker.com/r/rabbyte-tech/kontexted';
+
+/**
+ * Creates a clickable terminal hyperlink using OSC 8 escape sequence
+ * Falls back to plain URL for terminals that don't support it
+ */
+function formatClickableUrl(url: string, text?: string): string {
+  const linkText = text || url;
+  // OSC 8 escape sequence: \x1b]8;;url\x1b\\text\x1b]8;;\x1b\\
+  return `\x1b]8;;${url}\x1b\\${linkText}\x1b]8;;\x1b\\`;
+}
 
 function checkPrerequisites(): { valid: boolean; error?: string } {
   if (!isPlatformSupported()) {
@@ -49,7 +60,15 @@ export const handler = async (argv: { foreground?: boolean }) => {
   }
   try {
     const pid = await startServer({ foreground: argv.foreground });
-    console.log(argv.foreground ? `Server running (PID: ${pid})` : `Server started (PID: ${pid})`);
+    
+    // Load config to get host and port
+    const config = loadConfig();
+    const host = config?.server.host || '127.0.0.1';
+    const port = config?.server.port || 4729;
+    const url = `http://${host}:${port}`;
+    
+    console.log(`Server started (PID: ${pid})`);
+    console.log(`  → ${formatClickableUrl(url)}`);
   } catch (error) {
     console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
     process.exit(1);

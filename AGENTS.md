@@ -5,44 +5,60 @@ This file is for AI coding agents working in the Kontexted repository.
 ## Build / Lint / Test Commands
 
 ### Development
-- `make dev` / `cd apps/client && npm run dev` / `cd apps/server && bun run dev`
-- `make dev-client` / `make dev-server` - Start single app
+- `make dev` - Start both client and server in development mode
+- `make dev-client` / `cd apps/client && bun run dev` - Start client only
+- `make dev-server` / `cd apps/server && bun run dev` - Start server only
 
 ### Build
-- `make build` - Build both for production
-- `make build-client` / `make build-server` - Build single app
+- `make build` - Build both for production (client + server)
+- `make build-client` / `cd apps/client && bun run build` - Build client only
+- `make build-server` / `cd apps/server && bun run build` - Build server only
+- `make dist` - Build compiled executable distribution for all architectures
 
-### Lint & Test
-- `make lint` / `cd apps/client && npm run lint` - Lint client only
+### Lint & Typecheck
+- `make lint` / `cd apps/client && bun run lint` - Lint client only
+- `cd apps/client && npx tsc --noEmit` - Typecheck client
+- `cd apps/server && npx tsc --noEmit` - Typecheck server
+- `cd apps/cli && bun run lint` - Typecheck CLI
+
+### Test
+- `make test` - Run tests for all apps (currently no formal tests configured)
 - No test framework configured; add Vitest/Jest when testing needed
+- To run a single test file with Vitest: `cd apps/client && npx vitest run path/to/test.test.ts`
 
 ### Database (Server)
-- `make db-generate` / `make db-migrate` / `make db-studio`
-- Or `cd apps/server && bun run db:{generate|migrate|studio}`
+- `make db-generate` / `cd apps/server && bun run db:generate` - Generate migrations
+- `make db-migrate` / `cd apps/server && bun run db:migrate` - Run migrations
+- `make db-studio` / `cd apps/server && bun run db:studio` - Open Drizzle Studio
+- For SQLite: `bun run db:generate:sqlite`, `bun run db:migrate:sqlite`
+- For PostgreSQL: `bun run db:generate:pg`, `bun run db:migrate:pg`
 
 ### Docker
-- `docker compose up -d`, `make docker-build`, `make docker-run`
+- `docker compose up -d` - Start containers in background
+- `make docker-build` - Build Docker image
+- `make docker-run` - Run Docker container
 
 ## Code Style Guidelines
 
 ### Project Structure
-- Monorepo with pnpm workspaces
+- Monorepo with pnpm workspaces (use `pnpm` or `bun` as package manager)
 - `apps/client` - Vite + React 19 + TypeScript + Tailwind CSS
 - `apps/server` - Hono + Bun + TypeScript + Drizzle ORM
+- `apps/cli` - Commander-based CLI for MCP proxy and workspace management
 - Supports PostgreSQL (production) and SQLite (local dev)
 
 ### TypeScript Configuration
 - Strict mode enabled in both client and server
 - Target: ES2022, Module: ESNext
 - Path alias `@/*` maps to `./src/*` in each app
-- Includes `bun-types` in lib for Bun API types
-- No unused locals/parameters allowed (client: tsconfig)
+- `noUnusedLocals: true`, `noUnusedParameters: true` (client)
 - No fallback to `any` for type errors (strict mode)
 
 ### Imports
 - Use `@/*` for absolute imports within each app (`import { db } from "@/db"`)
 - External libraries first, then local modules
 - Named imports preferred over default imports
+- Group imports: external packages, then internal aliases, then relative
 
 ### Naming Conventions
 - Variables and functions: camelCase (`workspaceSlug`, `getWorkspace`)
@@ -58,8 +74,8 @@ This file is for AI coding agents working in the Kontexted repository.
 - `src/components/` - React components grouped by feature or type
 - `src/components/ui/` - shadcn/ui components
 - `src/features/*/` - Feature-specific code (auth, notes, workspaces)
-- `src/features/*/queries.ts` - TanStack Query queries
-- `src/features/*/mutations.ts` - TanStack Query mutations
+- `src/features/*/queries.ts` - TanStack Query query options
+- `src/features/*/mutations.ts` - TanStack Query mutation hooks
 - `src/lib/` - Shared utilities and helpers
 - `src/stores/` - Zustand state management
 - `src/router/` - TanStack Router configuration
@@ -67,9 +83,8 @@ This file is for AI coding agents working in the Kontexted repository.
 
 ### File Organization (Server)
 - `src/routes/` - Hono route handlers grouped by feature
-- `src/routes/*/` - Feature-specific route files
 - `src/routes/middleware/` - Hono middleware (auth, etc.)
-- `src/db/schema/` - Drizzle schema definitions (postgres and sqlite)
+- `src/db/schema/` - Drizzle schema definitions (postgresql/ and sqlite/)
 - `src/lib/` - Shared utilities and helpers
 - `src/collab-ws/` - WebSocket collaboration logic
 
@@ -79,9 +94,9 @@ This file is for AI coding agents working in the Kontexted repository.
 - TanStack Query for data fetching and caching
 - Zustand for global state (UI state, etc.)
 - shadcn/ui component library (Radix UI primitives)
-- Tailwind CSS for styling with `cn()` helper
-- Use `clsx` + `tailwind-merge` via `cn()` for conditional classes
+- Tailwind CSS for styling with `cn()` helper from `@/lib/utils`
 - Explicitly type all props with interfaces
+- Use JSDoc comments for mutation/query hook documentation
 
 ### Error Handling
 - Use custom error classes for domain errors (e.g., `UnauthorizedError`)
@@ -97,15 +112,14 @@ This file is for AI coding agents working in the Kontexted repository.
 - Type Hono context with `Variables` interface for `session` and `db`
 - Use Drizzle ORM with proper types from schema
 - Return JSON responses with appropriate HTTP status codes
-- Use SSE (Server-Sent Events) for real-time updates
+- Use SSE (Server-Sent Events) for real-time updates via `workspaceEventHub`
 
 ### Database Patterns
 - Drizzle ORM with schema files in `src/db/schema/`
 - Separate schemas for PostgreSQL and SQLite (dialects)
-- Use `drizzle-kit` for migrations: `bun run db:generate`
-- Migrate with `bun run db:migrate`
-- Use `eq()`, `and()`, `orderBy()` from `drizzle-orm`
-- Support both PostgreSQL and SQLite via `DATABASE_DIALECT` env var
+- Schema selection via `DATABASE_DIALECT` env var (defaults to sqlite)
+- Use `eq()`, `and()`, `or()`, `orderBy()` from `drizzle-orm`
+- Import schema from `@/db/schema` which auto-selects dialect
 
 ### Type Safety
 - Zod for runtime validation (schema definitions)
@@ -115,32 +129,32 @@ This file is for AI coding agents working in the Kontexted repository.
 - Avoid `any` except where absolutely necessary
 
 ### Comments and Documentation
-- JSDoc comments for public functions and classes
+- JSDoc comments for public functions, classes, and React hooks
 - Explain complex logic or non-obvious patterns
 - Keep comments concise and up-to-date
 - No inline comments for obvious code
 
 ### Folder and Note Names
 - Valid patterns: kebab-case, camelCase, snake_case, PascalCase
-- Validated by `isValidFolderName()` utility
+- Validated by `isValidFolderName()` utility in `@/lib/folder-name`
 
 ### Environment Variables
 - Server: see `apps/server/.env.example`
-- Client: see `apps/client/.env.example`
 - Use `process.env.VARIABLE_NAME` for server
 - Use `import.meta.env.VARIABLE_NAME` for client (Vite)
+- `DATABASE_DIALECT`: `sqlite` or `postgresql`
+- `DATABASE_URL`: SQLite file path or PostgreSQL connection string
 
 ### ESLint Rules (Client)
 - TypeScript ESLint with recommended rules
-- React Hooks ESLint for hook dependency warnings
 - `@typescript-eslint/no-unused-vars`: Error (ignore `_` prefix)
 - `@typescript-eslint/no-explicit-any`: Off
-- `react-hooks/exhaustive-deps`: Off (reserved for later cleanup)
-- `react-refresh/only-export-components`: Warn
+- `react-hooks/exhaustive-deps`: Off
+- `react-refresh/only-export-components`: Warn (disabled for shadcn UI components)
 
 ### Bun Version
 - Minimum Bun: 1.0.0
-- Check `apps/server/package.json` engines field
+- Check `apps/server/package.json` and `apps/cli/package.json` engines field
 
 ### Auth
 - Better Auth for authentication (email/password or Keycloak OAuth)
@@ -154,7 +168,13 @@ This file is for AI coding agents working in the Kontexted repository.
 - Room-based collaboration with document checkpoints
 - Manual-save mode when collab server is unavailable
 
+### MCP (Model Context Protocol)
+- MCP SDK used in both server and CLI
+- CLI provides MCP proxy functionality
+- Server exposes MCP endpoints for workspace integration
+
 ### Key Libraries
 - Client: React 19, TanStack Router, TanStack Query, Zustand, Lucide React
-- Server: Hono, Drizzle ORM, Better Auth, Yjs, jose (JWT)
+- Server: Hono, Drizzle ORM, Better Auth, Yjs, jose (JWT), MCP SDK
+- CLI: Commander, yargs, MCP SDK
 - UI: Radix UI primitives, Tailwind CSS, CodeMirror for editor

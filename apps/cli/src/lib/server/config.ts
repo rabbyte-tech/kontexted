@@ -76,7 +76,7 @@ export function getDefaultConfig(): ServerConfig {
       url: `${DATA_DIR}/kontexted.db`,
     },
     server: {
-      port: 3000,
+      port: 4729,
       host: '127.0.0.1',
     },
     logging: {
@@ -138,7 +138,7 @@ export function loadConfig(): ServerConfig | null {
         url: parsed.database.url,
       },
       server: {
-        port: parsed.server.port || 3000,
+        port: parsed.server.port || 4729,
         host: parsed.server.host || '127.0.0.1',
       },
       logging: {
