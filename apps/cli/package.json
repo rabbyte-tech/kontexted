@@ -1,6 +1,6 @@
 {
   "name": "kontexted",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "CLI tool for Kontexted - MCP proxy, workspaces management, and local server",
   "type": "module",
   "bin": {
@@ -43,8 +43,8 @@
     "typescript": "^5.6.0"
   },
   "optionalDependencies": {
-    "@kontexted/darwin-arm64": "0.1.6",
-    "@kontexted/linux-x64": "0.1.6",
-    "@kontexted/windows-x64": "0.1.6"
+    "@kontexted/darwin-arm64": "0.1.7",
+    "@kontexted/linux-x64": "0.1.7",
+    "@kontexted/windows-x64": "0.1.7"
   }
 }
