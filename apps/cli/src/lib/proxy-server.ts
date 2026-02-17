@@ -6,7 +6,7 @@ import type { McpTool } from "@/types";
 import { logError } from "@/lib/logger";
 
 // Tools that modify data
-const WRITE_TOOLS = new Set(["createFolder", "createNote", "updateNote", "deleteNote", "deleteFolder"]);
+const WRITE_TOOLS = new Set(["createFolder", "createNote", "updateNoteContent", "deleteNote", "deleteFolder"]);
 
 /**
  * Convert JSON schema to Zod schema, removing workspaceSlug

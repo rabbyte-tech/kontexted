@@ -639,3 +639,33 @@ export const reseedDocumentFromDb = async (roomName: string): Promise<void> => {
     console.log(`[collab] Document already up to date, skipping reseed: ${roomName}`);
   }
 };
+
+export const pushExternalUpdateToRoom = async (
+  roomName: string,
+  newContent: string,
+  authorUserId: string
+): Promise<boolean> => {
+  const state = roomStates.get(roomName);
+  if (!state) {
+    console.log(`[collab] External update skipped (room not active): ${roomName}`);
+    return false;
+  }
+
+  console.log(`[collab] External update pushed to room: ${roomName}, content length: ${newContent.length}`);
+
+  // Use Yjs transaction for atomic update - this ensures proper sync
+  state.doc.transact(() => {
+    state.yText.delete(0, state.yText.length);
+    state.yText.insert(0, newContent);
+  }, authorUserId); // Use authorUserId as origin for tracking
+
+  state.lastCheckpointContent = newContent;
+  state.lastSavedAt = new Date();
+  state.pendingAuthorUserId = authorUserId;
+  state.hasUnsavedChanges = false;
+
+  pushStatusUpdate(state, { hasUnsavedChanges: false });
+
+  console.log(`[collab] External update completed for room: ${roomName}, connections: ${state.doc.conns.size}`);
+  return true;
+};

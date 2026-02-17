@@ -16,6 +16,14 @@ import {
   transformFolderTree,
   transformWorkspaceTree,
 } from "@/lib/workspace-tree-transform";
+import {
+  createFolderInWorkspace,
+  createNoteInWorkspace,
+  updateNoteContentInWorkspace,
+  ValidationError,
+  NotFoundError,
+  DuplicateError,
+} from "@/lib/write-operations";
 
 const dialect = process.env.DATABASE_DIALECT === "sqlite" ? "sqlite" : "postgresql";
 
@@ -275,6 +283,117 @@ const getServer = () => {
       ],
       structuredContent: { note: result },
     };
+  });
+
+  // Register createFolder tool
+  server.registerTool('createFolder', {
+    title: 'Create Folder',
+    description: 'Create a new folder in the workspace. Optionally specify a parent folder to create a nested folder. Returns the public ID of the created folder.',
+    inputSchema: {
+      workspaceSlug: z.string().describe('The slug of the workspace'),
+      name: z.string().min(1).describe('URL-safe folder name (kebab-case, camelCase, snake_case, or PascalCase)'),
+      displayName: z.string().min(1).describe('Human-readable display name for the folder'),
+      parentPublicId: z.string().optional().describe('Public ID of parent folder (omit for root level)')
+    }
+  }, async ({ workspaceSlug, name, displayName, parentPublicId }) => {
+    try {
+      const result = await createFolderInWorkspace({
+        workspaceSlug,
+        name,
+        displayName,
+        parentPublicId,
+      });
+      
+      return {
+        content: [
+          { type: 'text', text: `Created folder: ${result.displayName}` },
+          { type: 'text', text: JSON.stringify(result, null, 2) },
+        ],
+        structuredContent: result as unknown as { [x: string]: unknown },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        content: [{ type: 'text', text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  });
+
+  // Register createNote tool
+  server.registerTool('createNote', {
+    title: 'Create Note',
+    description: 'Create a new note in the workspace. Optionally specify a folder to place the note in. Returns the public ID of the created note.',
+    inputSchema: {
+      workspaceSlug: z.string().describe('The slug of the workspace'),
+      name: z.string().min(1).describe('URL-safe note name (kebab-case, camelCase, snake_case, or PascalCase)'),
+      title: z.string().min(1).describe('Human-readable title for the note'),
+      folderPublicId: z.string().optional().describe('Public ID of folder (omit for root level)'),
+      content: z.string().optional().describe('Initial content for the note (defaults to empty string)')
+    }
+  }, async ({ workspaceSlug, name, title, folderPublicId, content }) => {
+    try {
+      const result = await createNoteInWorkspace({
+        workspaceSlug,
+        name,
+        title,
+        folderPublicId,
+        content,
+      });
+      
+      return {
+        content: [
+          { type: 'text', text: `Created note: ${result.title}` },
+          { type: 'text', text: JSON.stringify(result, null, 2) },
+        ],
+        structuredContent: result as unknown as { [x: string]: unknown },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        content: [{ type: 'text', text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  });
+
+  // Register updateNoteContent tool
+  server.registerTool('updateNoteContent', {
+    title: 'Update Note Content',
+    description: 'Update the content of an existing note. This creates a new revision and notifies connected clients. Returns the note public ID and revision ID.',
+    inputSchema: {
+      workspaceSlug: z.string().describe('The slug of the workspace'),
+      notePublicId: z.string().describe('The public ID of the note to update'),
+      content: z.string().describe('The new content for the note')
+    }
+  }, async ({ workspaceSlug, notePublicId, content }) => {
+    try {
+      const result = await updateNoteContentInWorkspace({
+        workspaceSlug,
+        notePublicId,
+        content,
+      });
+      
+      const response = {
+        publicId: result.publicId,
+        revisionId: result.revisionId,
+        updatedAt: result.updatedAt.toISOString(),
+      };
+      
+      return {
+        content: [
+          { type: 'text', text: `Updated note: ${notePublicId}` },
+          { type: 'text', text: JSON.stringify(response, null, 2) },
+        ],
+        structuredContent: response,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        content: [{ type: 'text', text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
   });
 
   return server;

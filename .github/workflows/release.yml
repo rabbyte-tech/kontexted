@@ -4,12 +4,21 @@
 # - Platform-specific native packages (@kontexted/darwin-arm64, @kontexted/linux-x64, etc.)
 # - Main CLI package (kontexted)
 #
-# Trigger: workflow_dispatch - version is read from apps/server/package.json
+# Trigger: push to main, or workflow_dispatch
 
 name: Release
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
+    inputs:
+      push_images:
+        description: 'Push packages to npm registry'
+        required: false
+        default: false
+        type: boolean
 
 # Permissions required for the workflow
 permissions:

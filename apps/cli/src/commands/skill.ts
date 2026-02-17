@@ -67,6 +67,80 @@ async function executeNoteById(
 }
 
 /**
+ * Execute create-folder skill via the API
+ */
+async function executeCreateFolder(
+  client: ApiClient,
+  workspaceSlug: string,
+  name: string,
+  displayName: string,
+  parentPublicId?: string
+): Promise<unknown> {
+  const body: Record<string, unknown> = { workspaceSlug, name, displayName };
+  if (parentPublicId) {
+    body.parentPublicId = parentPublicId;
+  }
+
+  const response = await client.post("/api/skill/create-folder", body);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Create folder skill failed: ${response.status} ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Execute create-note skill via the API
+ */
+async function executeCreateNote(
+  client: ApiClient,
+  workspaceSlug: string,
+  name: string,
+  title: string,
+  folderPublicId?: string,
+  content?: string
+): Promise<unknown> {
+  const body: Record<string, unknown> = { workspaceSlug, name, title };
+  if (folderPublicId) {
+    body.folderPublicId = folderPublicId;
+  }
+  if (content !== undefined) {
+    body.content = content;
+  }
+
+  const response = await client.post("/api/skill/create-note", body);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Create note skill failed: ${response.status} ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Execute update-note-content skill via the API
+ */
+async function executeUpdateNoteContent(
+  client: ApiClient,
+  workspaceSlug: string,
+  notePublicId: string,
+  content: string
+): Promise<unknown> {
+  const response = await client.post("/api/skill/update-note-content", {
+    workspaceSlug,
+    notePublicId,
+    content,
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Update note content skill failed: ${response.status} ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Helper function to create an API client from a profile alias
  */
 async function createApiClient(alias: string): Promise<ApiClient> {
@@ -205,6 +279,117 @@ export function registerSkillCommand(program: Command): void {
         console.error(
           error instanceof Error ? error.message : String(error)
         );
+        process.exit(1);
+      }
+    });
+
+  skillCommand
+    .command("create-folder")
+    .description("Create a new folder in the workspace")
+    .requiredOption("--alias <name>", "Profile alias to use")
+    .requiredOption("--name <name>", "URL-safe folder name")
+    .requiredOption("--display-name <displayName>", "Human-readable display name")
+    .option("--parent-id <parentPublicId>", "Public ID of parent folder (for nested folders)")
+    .action(async (options) => {
+      try {
+        const client = await createApiClient(options.alias);
+        const config = await readConfig();
+        const profile = getProfile(config, options.alias);
+
+        if (!profile) {
+          console.error(`Profile not found: ${options.alias}. Run 'kontexted login' first.`);
+          process.exit(1);
+        }
+
+        if (!profile.write) {
+          console.error("Error: Write operations not enabled for this profile. Re-login with 'kontexted login --alias <alias> --write' to enable write access.");
+          process.exit(1);
+        }
+
+        const result = await executeCreateFolder(
+          client,
+          profile.workspace,
+          options.name,
+          options.displayName,
+          options.parentId
+        );
+        displayResult(result);
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    });
+
+  skillCommand
+    .command("create-note")
+    .description("Create a new note in the workspace")
+    .requiredOption("--alias <name>", "Profile alias to use")
+    .requiredOption("--name <name>", "URL-safe note name")
+    .requiredOption("--title <title>", "Human-readable note title")
+    .option("--folder-id <folderPublicId>", "Public ID of folder (for notes in folders)")
+    .option("--content <content>", "Initial content for the note")
+    .action(async (options) => {
+      try {
+        const client = await createApiClient(options.alias);
+        const config = await readConfig();
+        const profile = getProfile(config, options.alias);
+
+        if (!profile) {
+          console.error(`Profile not found: ${options.alias}. Run 'kontexted login' first.`);
+          process.exit(1);
+        }
+
+        if (!profile.write) {
+          console.error("Error: Write operations not enabled for this profile. Re-login with 'kontexted login --alias <alias> --write' to enable write access.");
+          process.exit(1);
+        }
+
+        const result = await executeCreateNote(
+          client,
+          profile.workspace,
+          options.name,
+          options.title,
+          options.folderId,
+          options.content
+        );
+        displayResult(result);
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    });
+
+  skillCommand
+    .command("update-note-content")
+    .description("Update the content of an existing note")
+    .requiredOption("--alias <name>", "Profile alias to use")
+    .requiredOption("--note-id <notePublicId>", "Public ID of the note to update")
+    .requiredOption("--content <content>", "New content for the note")
+    .action(async (options) => {
+      try {
+        const client = await createApiClient(options.alias);
+        const config = await readConfig();
+        const profile = getProfile(config, options.alias);
+
+        if (!profile) {
+          console.error(`Profile not found: ${options.alias}. Run 'kontexted login' first.`);
+          process.exit(1);
+        }
+
+        if (!profile.write) {
+          console.error("Error: Write operations not enabled for this profile. Re-login with 'kontexted login --alias <alias> --write' to enable write access.");
+          process.exit(1);
+        }
+
+        const result = await executeUpdateNoteContent(
+          client,
+          profile.workspace,
+          options.noteId,
+          options.content
+        );
+        displayResult(result);
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
         process.exit(1);
       }
     });

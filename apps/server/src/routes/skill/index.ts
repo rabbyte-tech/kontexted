@@ -14,6 +14,14 @@ import {
 import { db } from "@/db";
 import { notes, folders } from "@/db/schema";
 import { and, eq, ilike, or, asc, sql } from "drizzle-orm";
+import {
+  createFolderInWorkspace,
+  createNoteInWorkspace,
+  updateNoteContentInWorkspace,
+  ValidationError,
+  NotFoundError,
+  DuplicateError,
+} from "@/lib/write-operations";
 
 const dialect = process.env.DATABASE_DIALECT === "sqlite" ? "sqlite" : "postgresql";
 
@@ -268,6 +276,99 @@ skillApp.post("/note-by-id", async (c) => {
   };
 
   return c.json({ note: result });
+});
+
+// POST /api/skill/create-folder
+skillApp.post("/create-folder", async (c) => {
+  const payload = await verifyBearerToken(c.req.raw);
+  if (!payload) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const { workspaceSlug, name, displayName, parentPublicId } = body;
+
+  try {
+    const result = await createFolderInWorkspace({
+      workspaceSlug,
+      name,
+      displayName,
+      parentPublicId,
+    });
+    return c.json({ folder: result });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return c.json({ error: error.message }, 400);
+    }
+    if (error instanceof NotFoundError) {
+      return c.json({ error: error.message }, 404);
+    }
+    if (error instanceof DuplicateError) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
+  }
+});
+
+// POST /api/skill/create-note
+skillApp.post("/create-note", async (c) => {
+  const payload = await verifyBearerToken(c.req.raw);
+  if (!payload) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const { workspaceSlug, name, title, folderPublicId, content } = body;
+
+  try {
+    const result = await createNoteInWorkspace({
+      workspaceSlug,
+      name,
+      title,
+      folderPublicId,
+      content,
+    });
+    return c.json({ note: result });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return c.json({ error: error.message }, 400);
+    }
+    if (error instanceof NotFoundError) {
+      return c.json({ error: error.message }, 404);
+    }
+    if (error instanceof DuplicateError) {
+      return c.json({ error: error.message }, 409);
+    }
+    throw error;
+  }
+});
+
+// POST /api/skill/update-note-content
+skillApp.post("/update-note-content", async (c) => {
+  const payload = await verifyBearerToken(c.req.raw);
+  if (!payload) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json();
+  const { workspaceSlug, notePublicId, content } = body;
+
+  try {
+    const result = await updateNoteContentInWorkspace({
+      workspaceSlug,
+      notePublicId,
+      content,
+    });
+    return c.json({ note: result });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return c.json({ error: error.message }, 400);
+    }
+    if (error instanceof NotFoundError) {
+      return c.json({ error: error.message }, 404);
+    }
+    throw error;
+  }
 });
 
 export { skillApp };
