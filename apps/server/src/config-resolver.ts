@@ -8,6 +8,29 @@ import { randomBytes } from 'crypto';
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 /**
+ * Naming convention type for file/folder naming
+ */
+type NamingConvention = 'kebab-case' | 'camelCase' | 'snake_case' | 'PascalCase';
+
+/**
+ * Valid naming conventions array
+ */
+const VALID_NAMING_CONVENTIONS: NamingConvention[] = ['kebab-case', 'camelCase', 'snake_case', 'PascalCase'];
+
+/**
+ * Validates a naming convention value
+ */
+function validateNamingConvention(value: unknown): NamingConvention {
+  if (typeof value === 'string' && VALID_NAMING_CONVENTIONS.includes(value as NamingConvention)) {
+    return value as NamingConvention;
+  }
+  if (value !== undefined) {
+    console.warn(`Invalid naming convention "${value}", falling back to "kebab-case". Valid values: ${VALID_NAMING_CONVENTIONS.join(', ')}`);
+  }
+  return 'kebab-case';
+}
+
+/**
  * Configuration structure
  */
 export interface ServerConfig {
@@ -40,6 +63,9 @@ export interface ServerConfig {
   paths?: {
     publicDir?: string;
     migrationsDir?: string;
+  };
+  naming: {
+    defaultConvention: NamingConvention;
   };
 }
 
@@ -82,6 +108,9 @@ function getDefaults(): ServerConfig {
       inviteCode: generateInviteCode(),
       method: 'email-password',
       keycloak: undefined,
+    },
+    naming: {
+      defaultConvention: 'kebab-case' as NamingConvention,
     },
   };
 }
@@ -163,6 +192,9 @@ function loadFromEnv(): ServerConfig | null {
     paths: {
       publicDir: process.env.KONTEXTED_PUBLIC_DIR,
       migrationsDir: process.env.KONTEXTED_MIGRATIONS_DIR,
+    },
+    naming: {
+      defaultConvention: validateNamingConvention(process.env.DEFAULT_NAMING_CONVENTION),
     },
   };
 }
@@ -254,6 +286,9 @@ function loadFromFile(): ServerConfig | null {
       paths: {
         publicDir: parsed.paths?.publicDir,
         migrationsDir: parsed.paths?.migrationsDir,
+      },
+      naming: {
+        defaultConvention: validateNamingConvention(parsed.naming?.defaultConvention),
       },
     };
   } catch (error) {

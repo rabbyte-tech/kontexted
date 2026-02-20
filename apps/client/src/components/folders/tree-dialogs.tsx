@@ -1,7 +1,9 @@
 import type { FormEvent, JSX } from "react"
+import { RefreshCw, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { DialogState } from "@/stores/ui-store"
 import type { DialogCopy } from "@/features/folders/types"
+import type { NamingConvention } from "@/lib/case-converter"
 
 /**
  * Props for the TreeItemDialog component.
@@ -16,6 +18,7 @@ interface TreeItemDialogProps {
   dialogDraft: {
     displayName?: string
     name?: string
+    nameLocked?: boolean
     error?: string | null
   }
   /** Whether any CRUD operation is currently in progress */
@@ -26,6 +29,10 @@ interface TreeItemDialogProps {
   onClose: () => void
   /** Handler for updating draft values */
   onDraftChange: (draft: { displayName?: string; name?: string }) => void
+  /** Handler for unlocking the name to sync from title */
+  onUnlockName: () => void
+  /** The naming convention used for auto-syncing */
+  namingConvention: NamingConvention
 }
 
 /**
@@ -40,6 +47,8 @@ export function TreeItemDialog({
   onSubmit,
   onClose,
   onDraftChange,
+  onUnlockName,
+  namingConvention,
 }: TreeItemDialogProps): JSX.Element | null {
   if (!activeDialog || !dialogCopy) {
     return null
@@ -84,15 +93,39 @@ export function TreeItemDialog({
               </div>
               {dialogCopy.nameLabel ? (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    {dialogCopy.nameLabel}
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      {dialogCopy.nameLabel}
+                    </label>
+                    {dialogDraft.nameLocked ? (
+                      <button
+                        type="button"
+                        onClick={onUnlockName}
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        title="Sync name from title"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        <span>Sync</span>
+                      </button>
+                    ) : null}
+                  </div>
                   <input
                     value={dialogDraft.name ?? ""}
                     onChange={(event) => onDraftChange({ name: event.target.value })}
                     placeholder={dialogCopy.namePlaceholder}
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
                   />
+                  {dialogDraft.nameLocked ? (
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Lock className="h-3 w-3" />
+                      <span>Manually edited</span>
+                    </p>
+                  ) : (
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <RefreshCw className="h-3 w-3" />
+                      <span>Auto-synced from title ({namingConvention})</span>
+                    </p>
+                  )}
                 </div>
               ) : null}
             </>

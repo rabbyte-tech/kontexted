@@ -77,10 +77,12 @@
      handleSignOut,
      handleLabelModeToggle,
      handleWorkspaceSwitch,
-     setNewWorkspaceName,
-     setUploadTarget,
-     setDialogDraft,
-   } = useFolderTree({
+      setNewWorkspaceName,
+      setUploadTarget,
+      handleDraftChange,
+      handleUnlockName,
+      namingConvention,
+    } = useFolderTree({
      workspaceSlug,
      workspaceName,
      workspaces,
@@ -196,15 +198,17 @@
            onClose={handleCloseCreateWorkspaceModal}
          />
 
-         <TreeItemDialog
-           activeDialog={activeDialog}
-           dialogCopy={dialogCopy}
-           dialogDraft={dialogDraft}
-           isSubmitting={isDialogSubmitting}
-           onSubmit={handleDialogSubmit}
-           onClose={handleCloseDialog}
-           onDraftChange={setDialogDraft}
-         />
+          <TreeItemDialog
+            activeDialog={activeDialog}
+            dialogCopy={dialogCopy}
+            dialogDraft={dialogDraft}
+            isSubmitting={isDialogSubmitting}
+            onSubmit={handleDialogSubmit}
+            onClose={handleCloseDialog}
+            onDraftChange={handleDraftChange}
+            onUnlockName={handleUnlockName}
+            namingConvention={namingConvention}
+          />
        </Sidebar>
 
        {uploadTarget && workspaceSlug && (

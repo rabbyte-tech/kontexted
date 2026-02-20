@@ -9,6 +9,23 @@ import {
 import { getMigrationsDir, getPublicDir } from './binary.js';
 
 /**
+ * Supported naming conventions for auto-generated names
+ */
+export type NamingConvention = 'kebab-case' | 'camelCase' | 'snake_case' | 'PascalCase';
+
+const VALID_NAMING_CONVENTIONS: NamingConvention[] = ['kebab-case', 'camelCase', 'snake_case', 'PascalCase'];
+
+/**
+ * Validates a naming convention value
+ */
+export function validateNamingConvention(value: unknown): NamingConvention {
+  if (typeof value === 'string' && VALID_NAMING_CONVENTIONS.includes(value as NamingConvention)) {
+    return value as NamingConvention;
+  }
+  return 'kebab-case';
+}
+
+/**
  * Server configuration interface
  */
 export interface ServerConfig {
@@ -37,6 +54,9 @@ export interface ServerConfig {
       clientSecret: string;
       issuer: string;
     };
+  };
+  naming: {
+    defaultConvention: NamingConvention;
   };
   paths?: {
     publicDir?: string;
@@ -98,6 +118,9 @@ export function getDefaultConfig(): ServerConfig {
       betterAuthSecret: generateBetterAuthSecret(),
       inviteCode: generateInviteCode(),
       method: 'email-password',
+    },
+    naming: {
+      defaultConvention: 'kebab-case',
     },
   };
 
@@ -172,6 +195,9 @@ export function loadConfig(): ServerConfig | null {
             issuer: parsed.auth.keycloak.issuer,
           },
         } : {}),
+      },
+      naming: {
+        defaultConvention: validateNamingConvention(parsed.naming?.defaultConvention),
       },
       paths: {
         publicDir: parsed.paths?.publicDir,

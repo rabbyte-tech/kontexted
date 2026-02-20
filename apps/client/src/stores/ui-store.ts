@@ -55,6 +55,7 @@ export type DialogState =
 export interface DialogDraftFields {
   displayName?: string
   name?: string
+  nameLocked?: boolean
   title?: string
   error?: string | null
 }

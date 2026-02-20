@@ -44,8 +44,13 @@
    findFolderByPublicId,
    collectAllNotes,
  } from "@/features/folders/utils"
- import type { WorkspaceTree } from "@/types"
- import { apiClient } from "@/lib/api-client"
+import type { WorkspaceTree } from "@/types"
+import { apiClient } from "@/lib/api-client"
+import { 
+  convertToNamingConvention, 
+  type NamingConvention 
+} from "@/lib/case-converter"
+import { getCachedNamingConvention } from "@/lib/config"
  
  /**
   * Props interface for the useFolderTree hook.
@@ -120,9 +125,16 @@
    handleWorkspaceSwitch: (slug: string) => void
    setNewWorkspaceName: (name: string) => void
    setUploadTarget: (target: { folderPublicId: string | null } | null) => void
-   setDialogDraft: (draft: Partial<DialogDraftFields>) => void
-   getDialogCopy: (state: DialogState) => DialogCopy
- }
+    setDialogDraft: (draft: Partial<DialogDraftFields>) => void
+    getDialogCopy: (state: DialogState) => DialogCopy
+    
+    // New handlers for draft management
+    handleDraftChange: (draft: Partial<DialogDraftFields>) => void;
+    handleUnlockName: () => void;
+    
+    // Naming convention for UI display
+    namingConvention: NamingConvention;
+  }
  
  /**
   * Custom hook that encapsulates all folder tree state and business logic.
@@ -341,22 +353,89 @@
      [hasWorkspace, moveNoteMutation, workspaceSlug]
    )
  
-   const handleOpenDialog = useCallback((nextDialog: DialogState) => {
-     openDialog(nextDialog)
-     let draft: { displayName?: string; name?: string; title?: string; error?: string | null } = {}
-     if (nextDialog.mode === "rename-folder") {
-       draft.displayName = nextDialog.initialDisplayName
-       draft.name = nextDialog.initialName
-     } else if (nextDialog.mode === "rename-note") {
-       draft.displayName = nextDialog.initialTitle
-       draft.name = nextDialog.initialName
-     } else {
-       draft.displayName = ""
-       draft.name = ""
-     }
-     draft.error = null
-     setDialogDraftInStore(draft)
-   }, [openDialog, setDialogDraftInStore])
+    const handleOpenDialog = useCallback((nextDialog: DialogState) => {
+      openDialog(nextDialog)
+      let draft: { displayName?: string; name?: string; nameLocked?: boolean; title?: string; error?: string | null } = {}
+      
+      // For create modes: nameLocked = false (auto-sync enabled)
+      if (nextDialog.mode === "create-folder" || nextDialog.mode === "create-note") {
+        draft.displayName = ""
+        draft.name = ""
+        draft.nameLocked = false
+      }
+      // For rename modes: nameLocked = true (preserve existing name by default)
+      else if (nextDialog.mode === "rename-folder") {
+        draft.displayName = nextDialog.initialDisplayName
+        draft.name = nextDialog.initialName
+        draft.nameLocked = true
+      }
+      else if (nextDialog.mode === "rename-note") {
+        draft.displayName = nextDialog.initialTitle
+        draft.name = nextDialog.initialName
+        draft.nameLocked = true
+      }
+      // For delete modes: no name fields needed
+      else {
+        // delete-note or delete-folder - no name fields
+      }
+      draft.error = null
+      setDialogDraftInStore(draft)
+    }, [openDialog, setDialogDraftInStore])
+
+    const handleDraftChange = useCallback((draft: Partial<DialogDraftFields>) => {
+      const currentDraft = dialogDraft
+      
+      // Case 1: displayName changed (and name was NOT explicitly in the draft)
+      if (draft.displayName !== undefined && !('name' in draft)) {
+        const newDisplayName = draft.displayName
+        const currentNameLocked = currentDraft.nameLocked ?? false
+        
+        if (!currentNameLocked) {
+          // Auto-convert displayName to name
+          const convention = getCachedNamingConvention()
+          const newName = convertToNamingConvention(newDisplayName, convention)
+          setDialogDraftInStore({ 
+            displayName: newDisplayName, 
+            name: newName,
+            nameLocked: false,
+            error: null 
+          })
+        } else {
+          // Name is locked, only update displayName
+          setDialogDraftInStore({ 
+            displayName: newDisplayName, 
+            error: null 
+          })
+        }
+        return
+      }
+      
+      // Case 2: name changed (user manually edited)
+      if (draft.name !== undefined) {
+        setDialogDraftInStore({
+          name: draft.name,
+          nameLocked: true,  // Lock the name when user edits it
+          error: null
+        })
+        return
+      }
+      
+      // Case 3: Other fields (like error)
+      setDialogDraftInStore(draft)
+    }, [dialogDraft, setDialogDraftInStore])
+
+    const handleUnlockName = useCallback(() => {
+      const currentDraft = dialogDraft
+      const convention = getCachedNamingConvention()
+      const displayName = currentDraft.displayName ?? ""
+      const newName = convertToNamingConvention(displayName, convention)
+      
+      setDialogDraftInStore({
+        name: newName,
+        nameLocked: false,
+        error: null
+      })
+    }, [dialogDraft, setDialogDraftInStore])
  
 
    const handleCloseCreateWorkspaceModal = useCallback(() => {
@@ -805,7 +884,11 @@
        (activeDialog.mode === "delete-note" && deleteNoteMutation.isPending) ||
        (activeDialog.mode === "delete-folder" && deleteFolderMutation.isPending)
      )
-   }, [activeDialog, createFolderMutation.isPending, createNoteMutation.isPending, updateFolderMutation.isPending, updateNoteMutation.isPending, deleteNoteMutation.isPending, deleteFolderMutation.isPending])
+    }, [activeDialog, createFolderMutation.isPending, createNoteMutation.isPending, updateFolderMutation.isPending, updateNoteMutation.isPending, deleteNoteMutation.isPending, deleteFolderMutation.isPending])
+
+    const namingConvention = useMemo<NamingConvention>(() => {
+      return getCachedNamingConvention()
+    }, [])
  
    // ============================================================================
    // Setter Functions
@@ -852,40 +935,45 @@
      sensors,
      collisionDetection,
  
-     // Computed
-     dialogCopy,
-     dragLabel,
-     dragLabels,
-     isCreateWorkspaceSubmitting,
-     isDialogSubmitting,
- 
-     // Handlers
-     toggleFolder,
-     refreshTree,
-     handleDialogSubmit,
-     handleDragStart,
-     handleDragEnd,
-     handleOpenDialog,
-     handleCloseDialog,
-     handleRootCreateFolder,
-     handleRootCreateNote,
-     handleRootUpload,
-     handleFolderCreateFolder,
-     handleFolderCreateNote,
-     handleFolderRename,
-     handleFolderDelete,
-     handleFolderUpload,
-     handleNoteRename,
-     handleNoteDelete,
-     handleCloseCreateWorkspaceModal,
-      handleOpenCreateWorkspaceModal,
-     handleCreateWorkspace,
-     handleSignOut,
-     handleLabelModeToggle,
-     handleWorkspaceSwitch,
-     setNewWorkspaceName,
-     setUploadTarget: setUploadTargetFunc,
-     setDialogDraft: setDialogDraftFunc,
-     getDialogCopy,
-   }
- }
+      // Computed
+      dialogCopy,
+      dragLabel,
+      dragLabels,
+      isCreateWorkspaceSubmitting,
+      isDialogSubmitting,
+      namingConvention,
+  
+      // Handlers
+      toggleFolder,
+      refreshTree,
+      handleDialogSubmit,
+      handleDragStart,
+      handleDragEnd,
+      handleOpenDialog,
+      handleCloseDialog,
+      handleRootCreateFolder,
+      handleRootCreateNote,
+      handleRootUpload,
+      handleFolderCreateFolder,
+      handleFolderCreateNote,
+      handleFolderRename,
+      handleFolderDelete,
+      handleFolderUpload,
+      handleNoteRename,
+      handleNoteDelete,
+      handleCloseCreateWorkspaceModal,
+       handleOpenCreateWorkspaceModal,
+      handleCreateWorkspace,
+      handleSignOut,
+      handleLabelModeToggle,
+      handleWorkspaceSwitch,
+      setNewWorkspaceName,
+      setUploadTarget: setUploadTargetFunc,
+      setDialogDraft: setDialogDraftFunc,
+      getDialogCopy,
+      
+      // New draft management handlers
+      handleDraftChange,
+      handleUnlockName,
+    }
+  }

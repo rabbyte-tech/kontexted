@@ -6,6 +6,8 @@ import {
   getMigrationsDir,
   getPublicDir,
   runMigration,
+  NamingConvention,
+  validateNamingConvention,
 } from '@/lib/server';
 import { CONFIG_FILE, DATA_DIR } from '@/lib/server/constants';
 import * as readline from 'readline';
@@ -58,6 +60,12 @@ async function runInit(interactive: boolean): Promise<void> {
       const levelAnswer = await promptQuestion(rl, 'Log level (debug/info/warn/error) [info]: ');
       const level = (levelAnswer.trim().toLowerCase() || 'info') as 'debug' | 'info' | 'warn' | 'error';
 
+      const namingAnswer = await promptQuestion(
+        rl,
+        'Default naming convention (kebab-case/camelCase/snake_case/PascalCase) [kebab-case]: '
+      );
+      const namingConvention = validateNamingConvention(namingAnswer.trim() || 'kebab-case');
+
       const migrationsDir = getMigrationsDir();
       const publicDir = getPublicDir();
 
@@ -75,6 +83,9 @@ async function runInit(interactive: boolean): Promise<void> {
           betterAuthSecret: defaultConfig.auth.betterAuthSecret,
           inviteCode: defaultConfig.auth.inviteCode,
           method: defaultConfig.auth.method,
+        },
+        naming: {
+          defaultConvention: namingConvention,
         },
         paths: {
           migrationsDir: migrationsDir || undefined,
