@@ -1,7 +1,8 @@
 import type { Command } from "commander";
 import * as readline from "readline";
 import { readConfig, writeConfig } from "@/lib/config";
-import { getProfile } from "@/lib/profile";
+import { getProfile, listProfiles } from "@/lib/profile";
+import type { Profile } from "@/types";
 import { ApiClient } from "@/lib/api-client";
 import { ensureValidTokens } from "@/lib/oauth";
 import { getProvider, allTemplates } from "@/skill-init/index";
@@ -180,6 +181,63 @@ async function createApiClient(alias: string): Promise<ApiClient> {
  */
 function displayResult(result: unknown): void {
   console.log(JSON.stringify(result, null, 2));
+}
+
+/**
+ * Interactive profile selection for skill init
+ * Returns { alias, hasWrite } or null if user chose generic
+ */
+async function selectProfile(
+  profiles: Array<{ alias: string; profile: Profile }>
+): Promise<{ alias: string; hasWrite: boolean } | null> {
+  // Build choices array
+  const choices = profiles.map(({ alias, profile }) => ({
+    alias,
+    hasWrite: profile.write,
+    label: `${alias} (write: ${profile.write ? '✓' : '✗'})`,
+  }));
+
+  // Add option to skip
+  choices.push({
+    alias: '',
+    hasWrite: false,
+    label: '[Skip - use generic template]',
+  });
+
+  console.log('\nSelect a profile to embed in kontexted-cli skill:\n');
+  choices.forEach((choice, index) => {
+    const marker = index === 0 ? '❯' : ' ';
+    console.log(`  ${marker} ${index + 1}. ${choice.label}`);
+  });
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question('\nEnter selection (1-' + choices.length + '): ', (answer) => {
+      rl.close();
+      
+      const selection = parseInt(answer.trim(), 10);
+      
+      if (isNaN(selection) || selection < 1 || selection > choices.length) {
+        console.log('Invalid selection, using generic template.');
+        resolve(null);
+        return;
+      }
+
+      const chosen = choices[selection - 1];
+      
+      if (!chosen.alias) {
+        // User chose "Skip - use generic"
+        resolve(null);
+        return;
+      }
+
+      resolve({ alias: chosen.alias, hasWrite: chosen.hasWrite });
+    });
+  });
 }
 
 /**
@@ -399,6 +457,7 @@ export function registerSkillCommand(program: Command): void {
     .description("Initialize AI agent skills for the current project")
     .option("--provider <name>", "Provider to use (default: opencode)", "opencode")
     .option("--all", "Generate all available skills without prompting", false)
+    .option("--no-prompt", "Skip profile selection, use generic template", false)
     .action(async (options) => {
       try {
         // Get the provider
@@ -409,6 +468,30 @@ export function registerSkillCommand(program: Command): void {
           console.error(`Unknown skill provider: ${options.provider}`);
           console.error(`Available providers: ${["opencode"].join(", ")}`);
           process.exit(1);
+        }
+
+        // Resolve alias and write permissions through interactive selection
+        let alias: string | undefined;
+        let hasWrite = false;
+
+        if (!options.noPrompt) {
+          const config = await readConfig();
+          const profiles = listProfiles(config);
+
+          if (profiles.length > 0) {
+            const selection = await selectProfile(profiles);
+            
+            if (selection) {
+              alias = selection.alias;
+              hasWrite = selection.hasWrite;
+              console.log(`\nUsing profile: ${alias} (write: ${hasWrite})\n`);
+            } else {
+              console.log('\nUsing generic template (no alias)\n');
+            }
+          } else {
+            console.log('No profiles found. Using generic template.\n');
+            console.log('To create a profile, run: kontexted login --alias <name> --url <url> --workspace <slug>\n');
+          }
         }
 
         // Show what will be generated
@@ -447,6 +530,8 @@ export function registerSkillCommand(program: Command): void {
           const result = await initSkill({
             skill: template,
             provider,
+            alias,
+            hasWrite,
           });
 
           const status = result.created ? "Created" : "Updated";

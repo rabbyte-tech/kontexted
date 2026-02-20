@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { SkillDefinition, SkillProvider } from '@/skill-init/providers/base';
+import type { SkillDefinition, SkillProvider, SkillContentOptions } from '@/skill-init/providers/base';
 
 /**
  * Options for initializing a skill
@@ -12,6 +12,10 @@ export interface InitSkillOptions {
   provider: SkillProvider;
   /** Base directory (defaults to current working directory) */
   basePath?: string;
+  /** Profile alias to embed in skill content */
+  alias?: string;
+  /** Whether the profile has write permissions */
+  hasWrite?: boolean;
 }
 
 /**
@@ -112,9 +116,11 @@ export function validateSkill(skill: SkillDefinition, provider: SkillProvider): 
     errors.push(`Skill description must be between 1 and 1024 characters (currently ${skill.description.length})`);
   }
 
-  // Validate content is not empty
-  if (!skill.content || skill.content.trim().length === 0) {
-    errors.push('Skill content is required and cannot be empty');
+  // Validate content is not empty (skip for generator functions)
+  if (typeof skill.content === 'string') {
+    if (!skill.content || skill.content.trim().length === 0) {
+      errors.push('Skill content is required and cannot be empty');
+    }
   }
 
   return errors;
@@ -129,13 +135,21 @@ export function validateSkill(skill: SkillDefinition, provider: SkillProvider): 
  * @throws Error if validation fails or if the skill cannot be written
  */
 export async function initSkill(options: InitSkillOptions): Promise<InitSkillResult> {
-  const { skill, provider } = options;
+  const { skill, provider, alias, hasWrite = false } = options;
   const basePath = options.basePath || process.cwd();
 
   // Validate the skill definition
   const validationErrors = validateSkill(skill, provider);
   if (validationErrors.length > 0) {
     throw new Error(`Skill validation failed:\n${validationErrors.join('\n')}`);
+  }
+
+  // Resolve content - handle both static string and generator function
+  let resolvedContent: string;
+  if (typeof skill.content === 'function') {
+    resolvedContent = skill.content({ alias, hasWrite });
+  } else {
+    resolvedContent = skill.content;
   }
 
   // Get the skill path from the provider
@@ -147,8 +161,8 @@ export async function initSkill(options: InitSkillOptions): Promise<InitSkillRes
   // Check if file already exists
   const alreadyExists = await fileExists(absoluteSkillPath);
 
-  // Generate the skill content
-  const skillContent = provider.generateSkillContent(skill);
+  // Generate the skill content with resolved content and metadata
+  const skillContent = provider.generateSkillContent(skill, resolvedContent, { alias });
 
   // Write the skill file
   await writeFile(absoluteSkillPath, skillContent);

@@ -1,5 +1,10 @@
 import type { SkillDefinition, SkillProvider } from "@/skill-init/providers/base";
 
+/** Options for skill content generation */
+interface GenerateContentOptions {
+  alias?: string;
+}
+
 /** OpenCode skill provider identifier */
 const OPENCODE_PROVIDER_ID = "opencode";
 
@@ -42,17 +47,30 @@ export const opencodeProvider: SkillProvider = {
 
   /**
    * Generate the complete skill file content including frontmatter
-   * @param skill - The skill definition to generate content for
+   * @param skill - The skill definition (for name and description)
+   * @param resolvedContent - The resolved content string (after generator function if applicable)
+   * @param options - Optional metadata to include in frontmatter
    * @returns The complete markdown content with frontmatter
    */
-  generateSkillContent(skill: SkillDefinition): string {
-    const frontmatter = `---
-name: ${skill.name}
-description: ${skill.description}
----`;
+  generateSkillContent(
+    skill: SkillDefinition, 
+    resolvedContent: string,
+    options?: GenerateContentOptions
+  ): string {
+    const frontmatterLines = [
+      `name: ${skill.name}`,
+      `description: ${skill.description}`,
+    ];
+    
+    // Add alias to frontmatter if provided
+    if (options?.alias) {
+      frontmatterLines.push(`alias: ${options.alias}`);
+    }
+
+    const frontmatter = `---\n${frontmatterLines.join('\n')}\n---`;
 
     return `${frontmatter}
 
-${skill.content}`;
+${resolvedContent}`;
   }
 };

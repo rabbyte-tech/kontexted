@@ -1,26 +1,32 @@
-import type { SkillDefinition } from '../providers/base';
+import type { SkillDefinition, SkillContentOptions } from '../providers/base';
 
-export const kontextedCliSkill: SkillDefinition = {
-  name: 'kontexted-cli',
-  description: 'Access and manage Kontexted workspaces, search notes, retrieve content, and create/update notes and folders through the kontexted CLI. Use when the user needs to explore workspace structure, find specific notes, read note content, or modify workspace content using profile aliases.',
-  content: String.raw`# Kontexted CLI Skill Commands
+/**
+ * Generate kontexted-cli skill content based on profile settings
+ */
+function generateKontextedCliContent(options: SkillContentOptions): string {
+  const { alias, hasWrite } = options;
 
-## Read Commands (No --write flag needed)
+  // Use actual alias or generic placeholder
+  const a = alias || '<profile>';
 
-\`\`\`
-kontexted skill workspace-tree --alias <profile>                    # Get workspace folder/note structure
-kontexted skill search-notes --alias <profile> --query "<text>"    # Search notes
-kontexted skill note-by-id --alias <profile> --note-id <id>        # Get specific note
-\`\`\`
+  return String.raw`# Kontexted CLI Skill Commands
 
-## Write Commands (Require write-enabled profile)
+## Read Commands
 
 \`\`\`
-kontexted skill create-folder --alias <profile> --name <name> --display-name "<displayName>" [--parent-id <id>]
-kontexted skill create-note --alias <profile> --name <name> --title "<title>" [--folder-id <id>] [--content "<content>"]
-kontexted skill update-note-content --alias <profile> --note-id <id> --content "<content>"
+kontexted skill workspace-tree --alias ${a}
+kontexted skill search-notes --alias ${a} --query "<text>" [--limit <n>]
+kontexted skill note-by-id --alias ${a} --note-id <id>
 \`\`\`
+${hasWrite ? `
+## Write Commands
 
+\`\`\`
+kontexted skill create-folder --alias ${a} --name <name> --display-name "<displayName>" [--parent-id <id>]
+kontexted skill create-note --alias ${a} --name <name> --title "<title>" [--folder-id <id>] [--content "<content>"]
+kontexted skill update-note-content --alias ${a} --note-id <id> --content "<content>"
+\`\`\`
+` : ''}
 ## Prerequisites
 
 Before using the kontexted CLI skill commands, ensure:
@@ -28,9 +34,9 @@ Before using the kontexted CLI skill commands, ensure:
 1. **kontexted CLI is installed** - Install via npm or your preferred package manager
 2. **User has authenticated** - User must have run \`kontexted login\` with a profile alias
 3. **Profile has a workspace configured** - The profile alias must be associated with an active workspace
-4. **Write operations require write-enabled profile** - To use write commands, the profile must have been created with \`kontexted login --write\`
+${hasWrite ? `4. **Write operations enabled** - This profile has write access enabled` : ''}
 
-All commands require the \`--alias\` parameter to specify which profile to use. The profile must already be set up and authenticated.
+All commands require the \`--alias\` parameter. ${alias ? `This skill is configured for the \`${alias}\` profile.` : 'The profile must already be set up and authenticated.'}
 
 ## Available Tools
 
@@ -41,7 +47,7 @@ All commands require the \`--alias\` parameter to specify which profile to use. 
 Get the complete folder and note structure of a workspace.
 
 \`\`\`bash
-kontexted skill workspace-tree --alias <profile>
+kontexted skill workspace-tree --alias ${a}
 \`\`\`
 
 **Options:**
@@ -59,7 +65,7 @@ kontexted skill workspace-tree --alias <profile>
 Search for notes containing specific text content.
 
 \`\`\`bash
-kontexted skill search-notes --alias <profile> --query "<text>" [--limit <n>]
+kontexted skill search-notes --alias ${a} --query "<text>" [--limit <n>]
 \`\`\`
 
 **Options:**
@@ -79,7 +85,7 @@ kontexted skill search-notes --alias <profile> --query "<text>" [--limit <n>]
 Retrieve the complete content of a specific note by its ID.
 
 \`\`\`bash
-kontexted skill note-by-id --alias <profile> --note-id <id>
+kontexted skill note-by-id --alias ${a} --note-id <id>
 \`\`\`
 
 **Options:**
@@ -92,7 +98,7 @@ kontexted skill note-by-id --alias <profile> --note-id <id>
 - When you have a specific note ID and need its content
 - After finding a note via search or workspace tree exploration
 - When the user asks to read a specific note
-
+${hasWrite ? `
 ### Write Tools
 
 #### create-folder
@@ -100,7 +106,7 @@ kontexted skill note-by-id --alias <profile> --note-id <id>
 Create a new folder in the workspace. Optionally nest under a parent folder.
 
 \`\`\`bash
-kontexted skill create-folder --alias <profile> --name <name> --display-name "<displayName>" [--parent-id <parentPublicId>]
+kontexted skill create-folder --alias ${a} --name <name> --display-name "<displayName>" [--parent-id <parentPublicId>]
 \`\`\`
 
 **Options:**
@@ -125,7 +131,7 @@ kontexted skill create-folder --alias <profile> --name <name> --display-name "<d
 Create a new note in the workspace. Optionally place in a folder.
 
 \`\`\`bash
-kontexted skill create-note --alias <profile> --name <name> --title "<title>" [--folder-id <folderPublicId>] [--content "<content>"]
+kontexted skill create-note --alias ${a} --name <name> --title "<title>" [--folder-id <folderPublicId>] [--content "<content>"]
 \`\`\`
 
 **Options:**
@@ -151,7 +157,7 @@ kontexted skill create-note --alias <profile> --name <name> --title "<title>" [-
 Update the content of an existing note. This creates a revision for history.
 
 \`\`\`bash
-kontexted skill update-note-content --alias <profile> --note-id <notePublicId> --content "<content>"
+kontexted skill update-note-content --alias ${a} --note-id <notePublicId> --content "<content>"
 \`\`\`
 
 **Options:**
@@ -174,7 +180,7 @@ kontexted skill update-note-content --alias <profile> --note-id <notePublicId> -
 **Error cases:**
 - **"Note not found"** - Verify the note ID
 - **"Invalid note public ID"** - Check the ID format
-
+` : ''}
 ## Typical Workflow
 
 The skill commands work best when combined in a logical sequence:
@@ -184,7 +190,7 @@ The skill commands work best when combined in a logical sequence:
 1. **Explore** - Use \`workspace-tree\` to understand workspace structure
 2. **Search** - Use \`search-notes\` to find relevant notes by content
 3. **Read** - Use \`note-by-id\` to retrieve full content of specific notes
-
+${hasWrite ? `
 ### Write Workflow
 
 1. **Create structure** - Use \`create-folder\` to organize content
@@ -194,99 +200,82 @@ The skill commands work best when combined in a logical sequence:
 **Example write workflow:**
 \`\`\`bash
 # Create a folder for project documentation
-kontexted skill create-folder --alias work --name "project-docs" --display-name "Project Documentation"
+kontexted skill create-folder --alias ${a} --name "project-docs" --display-name "Project Documentation"
 
 # Create a note in that folder (use the returned publicId)
-kontexted skill create-note --alias work --name "requirements" --title "Requirements" --folder-id "FOLDER_PUBLIC_ID"
+kontexted skill create-note --alias ${a} --name "requirements" --title "Requirements" --folder-id "FOLDER_PUBLIC_ID"
 
 # Update the note content
-kontexted skill update-note-content --alias work --note-id "NOTE_PUBLIC_ID" --content "# Requirements\n\n- Feature A\n- Feature B"
+kontexted skill update-note-content --alias ${a} --note-id "NOTE_PUBLIC_ID" --content "# Requirements\n\n- Feature A\n- Feature B"
 \`\`\`
-
+` : ''}
 ## Example Usage
 
 ### Exploring a workspace
 
 \`\`\`bash
-# Get the complete structure of a personal workspace
-kontexted skill workspace-tree --alias personal
+kontexted skill workspace-tree --alias ${a}
 \`\`\`
 
 ### Searching for content
 
 \`\`\`bash
-# Find notes about meeting notes
-kontexted skill search-notes --alias work --query "meeting notes"
-
-# Limit results to 3 notes
-kontexted skill search-notes --alias work --query "todo" --limit 3
+kontexted skill search-notes --alias ${a} --query "meeting notes"
+kontexted skill search-notes --alias ${a} --query "todo" --limit 3
 \`\`\`
 
 ### Reading specific notes
 
 \`\`\`bash
-# Get content of a note when you have its ID
-kontexted skill note-by-id --alias work --note-id "note-uuid-123"
+kontexted skill note-by-id --alias ${a} --note-id "note-uuid-123"
 \`\`\`
-
+${hasWrite ? `
 ### Creating a folder structure
 
 \`\`\`bash
-# Create a root-level folder
-kontexted skill create-folder --alias work --name "meetings" --display-name "Meeting Notes"
-
-# Create a nested folder (use the returned publicId as parent-id)
-kontexted skill create-folder --alias work --name "2024" --display-name "2024 Meetings" --parent-id "PARENT_FOLDER_ID"
+kontexted skill create-folder --alias ${a} --name "meetings" --display-name "Meeting Notes"
+kontexted skill create-folder --alias ${a} --name "2024" --display-name "2024 Meetings" --parent-id "PARENT_FOLDER_ID"
 \`\`\`
 
 ### Creating and populating a note
 
 \`\`\`bash
-# Create a note with initial content
-kontexted skill create-note --alias work --name "todo" --title "Todo List" --content "# Todo\n\n- [ ] Task 1\n- [ ] Task 2"
-
-# Later, update the note content
-kontexted skill update-note-content --alias work --note-id "NOTE_ID" --content "# Todo\n\n- [x] Task 1\n- [ ] Task 2\n- [ ] Task 3"
+kontexted skill create-note --alias ${a} --name "todo" --title "Todo List" --content "# Todo\n\n- [ ] Task 1\n- [ ] Task 2"
+kontexted skill update-note-content --alias ${a} --note-id "NOTE_ID" --content "# Todo\n\n- [x] Task 1\n- [ ] Task 2\n- [ ] Task 3"
 \`\`\`
 
 ### Combining read and write operations
 
 \`\`\`bash
-# Task: Find a note and update it
-# Step 1: Search for the note
-kontexted skill search-notes --alias work --query "meeting notes"
-
-# Step 2: Update the found note
-kontexted skill update-note-content --alias work --note-id "FOUND_NOTE_ID" --content "Updated content here"
+kontexted skill search-notes --alias ${a} --query "meeting notes"
+kontexted skill update-note-content --alias ${a} --note-id "FOUND_NOTE_ID" --content "Updated content here"
 \`\`\`
-
+` : ''}
 ## Error Handling
 
 ### Authentication errors
 
-If you encounter authentication errors:
-
 1. **"Profile not found"** - The specified alias doesn't exist. Ask the user to run \`kontexted login --alias <profile>\` first.
-
-2. **"Not authenticated"** - The profile exists but isn't authenticated. Ask the user to re-authenticate with \`kontexted login --alias <profile>\`.
-
-3. **"No workspace configured"** - The profile is authenticated but has no workspace. Ask the user to set up a workspace with \`kontexted workspace set --alias <profile>\`.
-
+2. **"Not authenticated"** - The profile exists but isn't authenticated. Ask the user to re-authenticate.
+3. **"No workspace configured"** - The profile is authenticated but has no workspace. Ask the user to set up a workspace.
+${hasWrite ? `
 ### Write operation errors
 
-1. **"Write operations not enabled for this profile"** - Re-login with \`kontexted login --alias <alias> --write\` to enable write access
+1. **"Write operations not enabled for this profile"** - Re-login with \`kontexted login --alias ${a} --write\` to enable write access
 2. **"Folder with this name already exists"** - Use a unique name or check existing folders
 3. **"Note with this name already exists"** - Use a unique name or check existing notes
 4. **"Parent folder not found"** - Verify the parent folder ID exists
 5. **"Note not found"** - Verify the note ID is correct
+` : `
+### Write operation errors
+
+Write commands are not available for this profile. To enable write access, run \`kontexted login --alias <profile> --write\` and regenerate the skill.`}
 
 ### Other errors
 
 - **"Note not found"** - The specified note ID doesn't exist or belongs to a different workspace
 - **"Workspace not accessible"** - The workspace exists but the user lacks access permissions
 - **"Connection error"** - Network issues. Retry the command or check the user's connection
-
-When errors occur, report them clearly to the user so they can take appropriate action. The kontexted CLI handles most errors with descriptive messages.
 
 ## Output Format
 
@@ -296,12 +285,17 @@ All commands return JSON output that is easy to parse:
 - \`workspace-tree\`: Returns nested object with folders and notes
 - \`search-notes\`: Returns array of matching notes with ID, title, and snippets
 - \`note-by-id\`: Returns complete note object with body and metadata
-
+${hasWrite ? `
 ### Write commands
 - \`create-folder\`: Returns \`{ folder: { publicId, name, displayName, parentPublicId } }\`
 - \`create-note\`: Returns \`{ note: { publicId, name, title, folderPublicId, content } }\`
 - \`update-note-content\`: Returns \`{ note: { publicId, revisionId, updatedAt } }\`
+` : ''}
+`;
+}
 
-Use this structured output to provide clear responses to users about workspace contents and note information.
-`
+export const kontextedCliSkill: SkillDefinition = {
+  name: 'kontexted-cli',
+  description: 'Access and manage Kontexted workspaces, search notes, retrieve content, and create/update notes and folders through the kontexted CLI. Use when the user needs to explore workspace structure, find specific notes, read note content, or modify workspace content using profile aliases.',
+  content: generateKontextedCliContent,
 };
