@@ -182,11 +182,13 @@
            <SidebarSeparator className="mx-0" />
          </div>
 
-         <UserSidebarFooter
-           user={session?.user ? { name: session.user.name ?? null, email: session.user.email ?? null } : null}
-           isMobile={isMobile}
-           onSignOut={handleSignOut}
-         />
+          <UserSidebarFooter
+            user={session?.user ? { name: session.user.name ?? null, email: session.user.email ?? null } : null}
+            isMobile={isMobile}
+            onSignOut={handleSignOut}
+            workspaceSlug={workspaceSlug}
+            workspaceName={workspaceName}
+          />
 
          <CreateWorkspaceDialog
            open={createWorkspaceModalOpen}
