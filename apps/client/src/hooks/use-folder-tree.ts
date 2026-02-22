@@ -263,19 +263,17 @@ import { getCachedNamingConvention } from "@/lib/config"
      if (workspaceSlug && expandedIds.size === 0) {
        resetExpandedFolders(workspaceSlug, initialTree ?? fallbackTree)
      }
-   }, [fallbackTree, initialTree, workspaceSlug, expandedIds.size, resetExpandedFolders])
- 
-   // Reset dialog state when switching workspaces to prevent UI leaks
-   useEffect(() => {
-     if (workspaceSlug && (activeDialog || Object.keys(dialogDraft).length > 0 || createWorkspaceModalOpen)) {
-       closeDialog()
-       clearDialogDraft()
-       closeCreateWorkspaceModal()
-     }
-   }, [workspaceSlug, closeDialog, clearDialogDraft, createWorkspaceModalOpen, closeCreateWorkspaceModal])
- 
-   // ============================================================================
-   // DnD Sensors and Collision Detection
+    }, [fallbackTree, initialTree, workspaceSlug, expandedIds.size, resetExpandedFolders])
+
+    // Reset dialog state when switching workspaces to prevent UI leaks
+    useEffect(() => {
+      closeDialog()
+      clearDialogDraft()
+      closeCreateWorkspaceModal()
+    }, [workspaceSlug]) // Only run when workspaceSlug changes
+
+    // ============================================================================
+    // DnD Sensors and Collision Detection
    // ============================================================================
  
    const sensors = useSensors(
