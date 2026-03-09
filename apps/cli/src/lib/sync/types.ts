@@ -252,6 +252,8 @@ export type SyncPushChange =
 export interface SyncPushChangeCreate {
   /** Change type */
   type: "create";
+  /** Temporary ID for correlating request with response */
+  tempId: string;
   /** Note name (slug) */
   name: string;
   /** Note title */

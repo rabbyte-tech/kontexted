@@ -1,8 +1,9 @@
-import { readFile, writeFile, access } from "node:fs/promises";
+import { readFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 import type { Command } from "commander";
 import type { SyncConfig } from "@/lib/sync/types";
+import { clearDaemonPid } from "@/lib/sync/command-utils";
 
 // ============ Types ============
 
@@ -89,7 +90,7 @@ export const handler = async (argv: StopOptions): Promise<void> => {
   if (!isProcessRunning(daemonPid)) {
     console.log(`Daemon process (PID: ${daemonPid}) is not running.`);
     console.log("Clearing stale PID from config...");
-    await clearDaemonPid(configPath, syncConfig);
+    await clearDaemonPid(syncDir);
     return;
   }
 
@@ -102,7 +103,7 @@ export const handler = async (argv: StopOptions): Promise<void> => {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ESRCH") {
       console.log("Daemon process has already terminated.");
-      await clearDaemonPid(configPath, syncConfig);
+      await clearDaemonPid(syncDir);
       return;
     }
     console.error(`Error: Failed to send signal to process: ${(error as Error).message}`);
@@ -119,7 +120,7 @@ export const handler = async (argv: StopOptions): Promise<void> => {
 
       if (!isProcessRunning(daemonPid)) {
         console.log("✓ Sync daemon stopped successfully.");
-        await clearDaemonPid(configPath, syncConfig);
+        await clearDaemonPid(syncDir);
         return;
       }
     }
@@ -133,7 +134,7 @@ export const handler = async (argv: StopOptions): Promise<void> => {
 
       if (!isProcessRunning(daemonPid)) {
         console.log("✓ Sync daemon forcefully stopped.");
-        await clearDaemonPid(configPath, syncConfig);
+        await clearDaemonPid(syncDir);
         return;
       }
     } catch (error) {
@@ -150,7 +151,7 @@ export const handler = async (argv: StopOptions): Promise<void> => {
 
     if (!isProcessRunning(daemonPid)) {
       console.log("✓ Sync daemon forcefully stopped.");
-      await clearDaemonPid(configPath, syncConfig);
+      await clearDaemonPid(syncDir);
       return;
     }
 
@@ -158,16 +159,6 @@ export const handler = async (argv: StopOptions): Promise<void> => {
     process.exit(1);
   }
 };
-
-/**
- * Clear the daemon PID from config.json
- */
-async function clearDaemonPid(configPath: string, syncConfig: SyncConfig): Promise<void> {
-  syncConfig.daemonPid = null;
-  await writeFile(configPath, JSON.stringify(syncConfig, null, 2), "utf-8");
-}
-
-// ============ Register with Commander ============
 
 /**
  * Register the sync stop command with the sync command.

@@ -5,8 +5,7 @@ import * as initCmd from './init';
 import * as startCmd from './start';
 import * as stopCmd from './stop';
 import * as statusCmd from './status';
-import * as pauseCmd from './pause';
-import * as resumeCmd from './resume';
+import * as resetCmd from './reset';
 import { registerConflictsCommand, conflictsCmd } from './conflicts';
 import * as forcePullCmd from './force-pull';
 import * as forcePushCmd from './force-push';
@@ -22,8 +21,7 @@ export const builder = (yargs: any) => {
     .command(startCmd)
     .command(stopCmd)
     .command(statusCmd)
-    .command(pauseCmd)
-    .command(resumeCmd)
+    .command(resetCmd)
     .command(conflictsCmd)
     .command(forcePullCmd)
     .command(forcePushCmd)
@@ -69,11 +67,16 @@ export function registerSyncCommand(program: Command): void {
   syncCmd
     .command('start')
     .description(startCmd.desc)
-    .option('-d, --daemon', 'Run sync daemon in background (default)')
+    .option('-d, --daemon', 'Run sync daemon in background')
     .option('-f, --foreground', 'Run sync daemon in foreground (blocking)')
+    .option('--dir <directory>', 'Sync directory (default: .kontexted in current directory)')
+    .option('-l, --log', 'Tail daemon log file')
     .action(async (opts) => {
       const args: string[] = ['start'];
+      if (opts.daemon) args.push('--daemon');
       if (opts.foreground) args.push('--foreground');
+      if (opts.dir) args.push('--dir', opts.dir);
+      if (opts.log) args.push('--log');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await import('./start').then((mod) =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -119,33 +122,20 @@ export function registerSyncCommand(program: Command): void {
       );
     });
 
-  // pause
+  // reset
   syncCmd
-    .command('pause')
-    .description(pauseCmd.desc)
+    .command('reset')
+    .description(resetCmd.desc)
+    .option('--clean', 'Delete entire .kontexted/ directory (not just state)')
+    .option('-f, --force', 'Skip confirmation prompt')
     .option('--dir <directory>', 'Sync directory (default: .kontexted in current directory)')
     .action(async (opts) => {
-      const args: string[] = ['pause'];
+      const args: string[] = ['reset'];
+      if (opts.clean) args.push('--clean');
+      if (opts.force) args.push('--force');
       if (opts.dir) args.push('--dir', opts.dir);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await import('./pause').then((mod) =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        yargs(args)
-          .command(mod as any)
-          .parse()
-      );
-    });
-
-  // resume
-  syncCmd
-    .command('resume')
-    .description(resumeCmd.desc)
-    .option('--dir <directory>', 'Sync directory (default: .kontexted in current directory)')
-    .action(async (opts) => {
-      const args: string[] = ['resume'];
-      if (opts.dir) args.push('--dir', opts.dir);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await import('./resume').then((mod) =>
+      await import('./reset').then((mod) =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         yargs(args)
           .command(mod as any)

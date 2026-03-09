@@ -3,8 +3,16 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
 import { readConfig, writeConfig } from "@/lib/config";
-import { getProfile, profileExists } from "@/lib/profile";
+import { getProfile } from "@/lib/profile";
 import { ApiClient } from "@/lib/api-client";
+import { parseMarkdown } from "@/lib/sync/utils";
+import {
+  DEFAULT_SYNC_DIR,
+  findSyncDir,
+  loadSyncConfig,
+  loadSyncState,
+  validateProfile,
+} from "@/lib/sync/command-utils";
 import type {
   SyncConfig,
   SyncState,
@@ -12,145 +20,11 @@ import type {
   SyncPushResponse,
   SyncPushChange,
 } from "@/lib/sync/types";
-import { parseMarkdown } from "@/lib/sync/utils";
 import type { Config, Profile, OAuthState } from "@/types";
 
-/**
- * Default sync directory name
- */
-const DEFAULT_SYNC_DIR = ".kontexted";
 
-/**
- * Find the sync directory by looking for .kontexted/ or using --dir option
- */
-async function findSyncDir(cwd: string, dirArg?: string): Promise<string> {
-  // If --dir was provided, use it
-  if (dirArg) {
-    const syncDir = path.resolve(cwd, dirArg);
-    try {
-      await fs.access(syncDir);
-      return syncDir;
-    } catch {
-      console.error(`Error: Directory not found: ${syncDir}`);
-      process.exit(1);
-    }
-  }
 
-  // Otherwise, look for .kontexted/ in current directory
-  const defaultSyncDir = path.join(cwd, DEFAULT_SYNC_DIR);
-  try {
-    await fs.access(defaultSyncDir);
-    return defaultSyncDir;
-  } catch {
-    console.error(`Error: Sync directory not found.`);
-    console.error(`Expected to find '${DEFAULT_SYNC_DIR}/' in current directory or specify --dir option.`);
-    console.error(`Run 'kontexted sync init' first to initialize sync.`);
-    process.exit(1);
-  }
-}
 
-/**
- * Load sync configuration from .sync/config.json
- */
-async function loadSyncConfig(syncDir: string): Promise<SyncConfig> {
-  const configPath = path.join(syncDir, ".sync", "config.json");
-
-  try {
-    const configRaw = await fs.readFile(configPath, "utf-8");
-    return JSON.parse(configRaw) as SyncConfig;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      console.error(`Error: Sync configuration not found.`);
-      console.error(`Run 'kontexted sync init' first to initialize sync.`);
-      process.exit(1);
-    }
-    throw error;
-  }
-}
-
-/**
- * Load sync state from .sync/state.json
- */
-async function loadSyncState(syncDir: string): Promise<SyncState> {
-  const statePath = path.join(syncDir, ".sync", "state.json");
-
-  try {
-    const stateRaw = await fs.readFile(statePath, "utf-8");
-    return JSON.parse(stateRaw) as SyncState;
-  } catch {
-    return { files: {}, folders: {}, lastFullSync: null, version: 1 };
-  }
-}
-
-/**
- * Validate that profile still exists and tokens are valid
- */
-function validateProfile(
-  config: Config,
-  alias: string
-): Profile {
-  if (!profileExists(config, alias)) {
-    console.error(`Error: Profile alias '${alias}' not found.`);
-    console.error("The profile may have been deleted. Run 'kontexted login' to add it again.");
-    process.exit(1);
-  }
-
-  const profile = getProfile(config, alias)!;
-
-  // Validate tokens exist
-  if (!profile.oauth?.tokens?.access_token) {
-    console.error(`Error: No valid authentication tokens for profile '${alias}'.`);
-    console.error("Run 'kontexted login' to re-authenticate.");
-    process.exit(1);
-  }
-
-  return profile;
-}
-
-/**
- * Prompt user for confirmation
- */
-async function promptConfirmation(message: string): Promise<boolean> {
-  const readline = await import("node:readline");
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(`${message} (y/N) `, (answer) => {
-      rl.close();
-      resolve(answer.toLowerCase() === "y");
-    });
-  });
-}
-
-/**
- * Recursively get all markdown files in a directory
- */
-async function getMarkdownFiles(dir: string, baseDir: string): Promise<string[]> {
-  const files: string[] = [];
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    const relativePath = path.relative(baseDir, fullPath);
-
-    // Skip .sync directory
-    if (relativePath.startsWith(".sync")) {
-      continue;
-    }
-
-    if (entry.isDirectory()) {
-      const subFiles = await getMarkdownFiles(fullPath, baseDir);
-      files.push(...subFiles);
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(relativePath);
-    }
-  }
-
-  return files;
-}
 
 /**
  * Handler for the sync force-push command
@@ -204,7 +78,10 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
   );
 
   // Step 7: Load sync state
-  const state = await loadSyncState(syncDir);
+  let state = await loadSyncState(syncDir);
+  if (state === null) {
+    state = { files: {}, folders: {}, lastFullSync: null, version: 1 };
+  }
 
   // Step 8: Get all local markdown files
   console.log("Scanning local files...");
@@ -213,6 +90,9 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
 
   // Step 9: Build push request
   const changes: SyncPushChange[] = [];
+
+  // Map tempId -> relativePath for tracking created notes
+  const tempIdToPath: Map<string, string> = new Map();
 
   for (const relativePath of localFiles) {
     const fullPath = path.join(syncDir, relativePath);
@@ -248,8 +128,11 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
       });
     } else {
       // Create new note
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      tempIdToPath.set(tempId, relativePath);
       changes.push({
         type: "create",
+        tempId,
         name: fileName,
         title: noteTitle,
         content: body,
@@ -316,12 +199,25 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
   }
 
   // Update state with new publicIds for created notes
-  if (response.created) {
+  if (response.created && response.created.length > 0) {
+    // We need to fetch note details to get noteId
+    // For now, update with publicId and set noteId to 0 (will be corrected on next pull)
     for (const created of response.created) {
-      // Find the corresponding change (we need to match by something - using index for simplicity)
-      // Actually, the response doesn't include the tempId, so we can't easily correlate
-      // For now, we'll just re-scan on next sync
+      const relativePath = tempIdToPath.get(created.tempId);
+      if (relativePath) {
+        state.files[relativePath] = {
+          localHash: null,
+          remoteHash: null,
+          localMtime: null,
+          remoteMtime: null,
+          lastSync: new Date().toISOString(),
+          publicId: created.publicId,
+          noteId: 0, // Will be updated on next sync
+          folderPath: null, // Will be updated on next sync
+        };
+      }
     }
+    console.log(`Updated state for ${response.created.length} newly created notes.`);
   }
 
   // Update last full sync timestamp
@@ -332,6 +228,51 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
   await fs.writeFile(statePath, JSON.stringify(state, null, 2), "utf-8");
 
   console.log("\nForce push complete. Remote updated.");
+}
+
+/**
+ * Prompt user for confirmation
+ */
+async function promptConfirmation(message: string): Promise<boolean> {
+  const readline = await import("node:readline");
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(`${message} (y/N) `, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === "y");
+    });
+  });
+}
+
+/**
+ * Recursively get all markdown files in a directory
+ */
+async function getMarkdownFiles(dir: string, baseDir: string): Promise<string[]> {
+  const files: string[] = [];
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    const relativePath = path.relative(baseDir, fullPath);
+
+    // Skip .sync directory
+    if (relativePath.startsWith(".sync")) {
+      continue;
+    }
+
+    if (entry.isDirectory()) {
+      const subFiles = await getMarkdownFiles(fullPath, baseDir);
+      files.push(...subFiles);
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
 }
 
 // ============ Yargs Command Module ============

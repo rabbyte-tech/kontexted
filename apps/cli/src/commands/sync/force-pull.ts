@@ -2,112 +2,22 @@ import type { Command } from "commander";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readConfig, writeConfig } from "@/lib/config";
-import { getProfile, profileExists } from "@/lib/profile";
+import { getProfile } from "@/lib/profile";
 import { ApiClient } from "@/lib/api-client";
-import type { SyncConfig, SyncState, RemoteNote, SyncPullResponse } from "@/lib/sync/types";
 import { ensureDirectoryExists, formatMarkdown, computeFilePath } from "@/lib/sync/utils";
-import type { Config, Profile, OAuthState } from "@/types";
 import { sha256 } from "@/lib/sync/crypto";
+import {
+  DEFAULT_SYNC_DIR,
+  findSyncDir,
+  loadSyncConfig,
+  loadSyncState,
+  saveSyncState,
+  validateProfile,
+} from "@/lib/sync/command-utils";
+import type { SyncConfig, SyncState, RemoteNote, SyncPullResponse } from "@/lib/sync/types";
+import type { Config, Profile, OAuthState } from "@/types";
 
-/**
- * Default sync directory name
- */
-const DEFAULT_SYNC_DIR = ".kontexted";
 
-/**
- * Find the sync directory by looking for .kontexted/ or using --dir option
- */
-async function findSyncDir(cwd: string, dirArg?: string): Promise<string> {
-  // If --dir was provided, use it
-  if (dirArg) {
-    const syncDir = path.resolve(cwd, dirArg);
-    try {
-      await fs.access(syncDir);
-      return syncDir;
-    } catch {
-      console.error(`Error: Directory not found: ${syncDir}`);
-      process.exit(1);
-    }
-  }
-
-  // Otherwise, look for .kontexted/ in current directory
-  const defaultSyncDir = path.join(cwd, DEFAULT_SYNC_DIR);
-  try {
-    await fs.access(defaultSyncDir);
-    return defaultSyncDir;
-  } catch {
-    console.error(`Error: Sync directory not found.`);
-    console.error(`Expected to find '${DEFAULT_SYNC_DIR}/' in current directory or specify --dir option.`);
-    console.error(`Run 'kontexted sync init' first to initialize sync.`);
-    process.exit(1);
-  }
-}
-
-/**
- * Load sync configuration from .sync/config.json
- */
-async function loadSyncConfig(syncDir: string): Promise<SyncConfig> {
-  const configPath = path.join(syncDir, ".sync", "config.json");
-
-  try {
-    const configRaw = await fs.readFile(configPath, "utf-8");
-    return JSON.parse(configRaw) as SyncConfig;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      console.error(`Error: Sync configuration not found.`);
-      console.error(`Run 'kontexted sync init' first to initialize sync.`);
-      process.exit(1);
-    }
-    throw error;
-  }
-}
-
-/**
- * Load sync state from .sync/state.json
- */
-async function loadSyncState(syncDir: string): Promise<SyncState> {
-  const statePath = path.join(syncDir, ".sync", "state.json");
-
-  try {
-    const stateRaw = await fs.readFile(statePath, "utf-8");
-    return JSON.parse(stateRaw) as SyncState;
-  } catch {
-    return { files: {}, folders: {}, lastFullSync: null, version: 1 };
-  }
-}
-
-/**
- * Save sync state to .sync/state.json
- */
-async function saveSyncState(syncDir: string, state: SyncState): Promise<void> {
-  const statePath = path.join(syncDir, ".sync", "state.json");
-  await fs.writeFile(statePath, JSON.stringify(state, null, 2), "utf-8");
-}
-
-/**
- * Validate that profile still exists and tokens are valid
- */
-function validateProfile(
-  config: Config,
-  alias: string
-): Profile {
-  if (!profileExists(config, alias)) {
-    console.error(`Error: Profile alias '${alias}' not found.`);
-    console.error("The profile may have been deleted. Run 'kontexted login' to add it again.");
-    process.exit(1);
-  }
-
-  const profile = getProfile(config, alias)!;
-
-  // Validate tokens exist
-  if (!profile.oauth?.tokens?.access_token) {
-    console.error(`Error: No valid authentication tokens for profile '${alias}'.`);
-    console.error("Run 'kontexted login' to re-authenticate.");
-    process.exit(1);
-  }
-
-  return profile;
-}
 
 /**
  * Prompt user for confirmation
@@ -208,7 +118,10 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
   console.log(`Found ${remoteNotes.length} notes on server.`);
 
   // Step 8: Load current state
-  const state = await loadSyncState(syncDir);
+  let state = await loadSyncState(syncDir);
+  if (state === null) {
+    state = { files: {}, folders: {}, lastFullSync: null, version: 1 };
+  }
 
   // Step 9: Write each note to local filesystem
   console.log("Writing local files...");

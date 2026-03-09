@@ -12,6 +12,7 @@ export class RemoteListener {
   private reconnectDelay = 1000;
   private isRunning = false;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private onStopped?: () => void;
 
   constructor(
     private apiClient: ApiClient,
@@ -19,6 +20,13 @@ export class RemoteListener {
     private onChange: (event: RemoteChangeEvent) => void,
     private onFolderChange?: (event: RemoteFolderChangeEvent) => void
   ) {}
+
+  /**
+   * Set callback for when listener stops (e.g., due to max reconnects)
+   */
+  setOnStopped(callback: () => void): void {
+    this.onStopped = callback;
+  }
 
   /**
    * Start listening for remote changes via SSE using fetch
@@ -208,6 +216,10 @@ export class RemoteListener {
     if (this.reconnectAttempts > this.maxReconnectAttempts) {
       console.error("[RemoteListener] Max reconnect attempts reached");
       this.stop();
+      // Notify callback that listener stopped permanently
+      if (this.onStopped) {
+        this.onStopped();
+      }
       return;
     }
 

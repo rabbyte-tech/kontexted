@@ -2,88 +2,66 @@ import type { Command } from "commander";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readConfig, writeConfig } from "@/lib/config";
-import { getProfile, profileExists } from "@/lib/profile";
+import { getProfile } from "@/lib/profile";
 import { ApiClient } from "@/lib/api-client";
 import { SyncEngine } from "@/lib/sync/sync-engine";
-import type { SyncConfig } from "@/lib/sync/types";
-import type { Config, Profile, OAuthState } from "@/types";
+import {
+  findSyncDir,
+  loadSyncConfig,
+  validateProfile,
+  daemonize,
+  isDaemonChild,
+  watchDaemonLog,
+  clearDaemonPid,
+} from "@/lib/sync/command-utils";
+import type { OAuthState } from "@/types";
 
 /**
- * Default sync directory name
+ * Setup console logging to file in daemon mode
  */
-const DEFAULT_SYNC_DIR = ".kontexted";
+async function setupDaemonLogging(syncDir: string): Promise<void> {
+  const logPath = path.join(syncDir, ".sync", "daemon.log");
+  const logFile = await fs.open(logPath, "a");
 
-/**
- * Find the sync directory by looking for .kontexted/ or using --dir option
- */
-async function findSyncDir(cwd: string, dirArg?: string): Promise<string> {
-  // If --dir was provided, use it
-  if (dirArg) {
-    const syncDir = path.resolve(cwd, dirArg);
-    try {
-      await fs.access(syncDir);
-      return syncDir;
-    } catch {
-      console.error(`Error: Directory not found: ${syncDir}`);
-      process.exit(1);
-    }
-  }
+  // Override console.log and console.error to write to log file
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
 
-  // Otherwise, look for .kontexted/ in current directory
-  const defaultSyncDir = path.join(cwd, DEFAULT_SYNC_DIR);
-  try {
-    await fs.access(defaultSyncDir);
-    return defaultSyncDir;
-  } catch {
-    console.error(`Error: Sync directory not found.`);
-    console.error(`Expected to find '${DEFAULT_SYNC_DIR}/' in current directory or specify --dir option.`);
-    console.error(`Run 'kontexted sync init' first to initialize sync.`);
+  const writeToLog = async (...args: unknown[]) => {
+    const timestamp = new Date().toISOString();
+    const message = args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ");
+    const logLine = `[${timestamp}] ${message}\n`;
+    await logFile.write(logLine);
+  };
+
+  console.log = async (...args: unknown[]) => {
+    await writeToLog(...args);
+    originalLog(...args);
+  };
+
+  console.error = async (...args: unknown[]) => {
+    await writeToLog(...args);
+    originalError(...args);
+  };
+
+  console.warn = async (...args: unknown[]) => {
+    await writeToLog(...args);
+    originalWarn(...args);
+  };
+
+  // Handle uncaught errors
+  process.on("uncaughtException", async (error) => {
+    await logFile.write(`[${new Date().toISOString()}] UNCAUGHT EXCEPTION: ${error.stack || error.message}\n`);
+    originalError("Uncaught exception:", error);
+    await clearDaemonPid(syncDir);
     process.exit(1);
-  }
-}
+  });
 
-/**
- * Load and validate sync config
- */
-async function loadSyncConfig(syncDir: string): Promise<SyncConfig> {
-  const configPath = path.join(syncDir, ".sync", "config.json");
-
-  try {
-    const configRaw = await fs.readFile(configPath, "utf-8");
-    return JSON.parse(configRaw) as SyncConfig;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      console.error(`Error: Sync configuration not found.`);
-      console.error(`Run 'kontexted sync init' first to initialize sync.`);
-      process.exit(1);
-    }
-    throw error;
-  }
-}
-
-/**
- * Validate that profile still exists and tokens are valid
- */
-function validateProfile(
-  config: Config,
-  alias: string
-): Profile {
-  if (!profileExists(config, alias)) {
-    console.error(`Error: Profile alias '${alias}' not found.`);
-    console.error("The profile may have been deleted. Run 'kontexted login' to add it again.");
-    process.exit(1);
-  }
-
-  const profile = getProfile(config, alias)!;
-
-  // Validate tokens exist
-  if (!profile.oauth?.tokens?.access_token) {
-    console.error(`Error: No valid authentication tokens for profile '${alias}'.`);
-    console.error("Run 'kontexted login' to re-authenticate.");
-    process.exit(1);
-  }
-
-  return profile;
+  process.on("unhandledRejection", async (reason) => {
+    await logFile.write(`[${new Date().toISOString()}] UNHANDLED REJECTION: ${reason}\n`);
+    originalError("Unhandled rejection:", reason);
+  });
 }
 
 /**
@@ -92,24 +70,72 @@ function validateProfile(
 export async function handler(argv: {
   daemon?: boolean;
   foreground?: boolean;
-  pollInterval?: number;
   dir?: string;
+  log?: boolean;
 }): Promise<void> {
   const cwd = process.cwd();
-  const pollInterval = argv.pollInterval || 30;
 
-  // For now, daemon mode is not implemented - always run in foreground
-  // This can be enhanced later
-  const isDaemon = argv.daemon && !argv.foreground;
-
-  if (isDaemon) {
-    console.log("Daemon mode is not yet implemented. Running in foreground mode.");
-  }
+  // Check if we're the daemon child process FIRST
+  // This must be checked before the existing daemon check to avoid
+  // the child process detecting itself as an existing daemon
+  const isChild = isDaemonChild();
 
   // Step 1: Find the sync directory
   console.log("Finding sync directory...");
   const syncDir = await findSyncDir(cwd, argv.dir);
   console.log(`Using sync directory: ${syncDir}`);
+
+  // Handle --log flag to tail daemon logs
+  if (argv.log) {
+    console.log("Tailing daemon logs...");
+    await watchDaemonLog(syncDir);
+    return;
+  }
+
+  // Only check for existing daemon if we're NOT the child process
+  // The child process IS the daemon, so it shouldn't check for itself
+  if (!isChild) {
+    const existingSyncConfig = await loadSyncConfig(syncDir);
+    if (existingSyncConfig.daemonPid) {
+      try {
+        process.kill(existingSyncConfig.daemonPid, 0);
+        console.log(`Daemon is already running with PID: ${existingSyncConfig.daemonPid}`);
+        console.log("Use 'kontexted sync stop' to stop it first, or 'kontexted sync start --log' to view logs");
+        process.exit(1);
+      } catch {
+        // Process not running, clear stale PID
+        console.log("Clearing stale daemon PID...");
+        await clearDaemonPid(syncDir);
+      }
+    }
+  }
+
+  // Determine if we should run in daemon mode
+  // --daemon flag enables daemon mode
+  // --foreground flag explicitly disables daemon mode
+  const isDaemon = argv.daemon && argv.foreground !== true;
+
+  // If daemon mode requested, spawn child process and exit
+  if (isDaemon && !isChild) {
+    console.log("Starting sync daemon in background...");
+    const { logPath, pid } = await daemonize(syncDir);
+    console.log(`Daemon started with PID: ${pid}`);
+    console.log(`Logs: ${logPath}`);
+    console.log("Use 'kontexted sync start --log' to view logs");
+    process.exit(0);
+  }
+
+  // If we're the child process, setup logging and continue
+  if (isChild) {
+    await setupDaemonLogging(syncDir);
+    console.log("Daemon process started");
+
+    // Ensure PID is cleared on any exit (normal or abnormal)
+    const cleanup = async () => {
+      await clearDaemonPid(syncDir);
+    };
+    process.on("exit", cleanup);
+  }
 
   // Step 2: Load sync config
   console.log("Loading sync configuration...");
@@ -163,12 +189,24 @@ export async function handler(argv: {
   // Step 6: Start sync
   console.log("Starting sync...");
   await syncEngine.start();
-  console.log("Sync started. Press Ctrl+C to stop.");
+
+  if (isChild) {
+    console.log("Sync daemon running. Press Ctrl+C to stop.");
+  } else {
+    console.log("Sync started. Press Ctrl+C to stop.");
+  }
 
   // Handle shutdown signals
-  const shutdown = () => {
+  const shutdown = async () => {
     console.log("\nStopping sync...");
     syncEngine.stop();
+
+    // Clear daemon PID if we're running as daemon
+    if (isChild) {
+      await clearDaemonPid(syncDir);
+      console.log("Daemon stopped and PID cleared.");
+    }
+
     process.exit(0);
   };
 
@@ -192,37 +230,37 @@ export const builder = (yargs: any) => {
     .option("daemon", {
       alias: "d",
       type: "boolean",
-      description: "Run sync daemon in background (not yet implemented)",
+      description: "Run sync daemon in background",
       default: false,
     })
     .option("foreground", {
       alias: "f",
       type: "boolean",
       description: "Run sync daemon in foreground (blocking)",
-      default: true,
-    })
-    .option("poll-interval", {
-      type: "number",
-      description: "Polling interval for remote changes in seconds (not yet implemented)",
-      default: 30,
     })
     .option("dir", {
       type: "string",
       description: "Sync directory (default: .kontexted in current directory)",
+    })
+    .option("log", {
+      alias: "l",
+      type: "boolean",
+      description: "Tail daemon log file",
+      default: false,
     });
 };
 
 export async function handlerYargs(argv: {
   daemon?: boolean;
   foreground?: boolean;
-  pollInterval?: number;
   dir?: string;
+  log?: boolean;
 }): Promise<void> {
   await handler({
     daemon: argv.daemon,
     foreground: argv.foreground,
-    pollInterval: argv.pollInterval,
     dir: argv.dir,
+    log: argv.log,
   });
 }
 
@@ -235,16 +273,16 @@ export function registerStartCommand(syncCommand: Command): void {
   syncCommand
     .command("start")
     .description(desc)
-    .option("-d, --daemon", "Run sync daemon in background (not yet implemented)", false)
-    .option("-f, --foreground", "Run sync daemon in foreground (blocking)", true)
-    .option("--poll-interval <seconds>", "Polling interval for remote changes (not yet implemented)", "30")
+    .option("-d, --daemon", "Run sync daemon in background", false)
+    .option("-f, --foreground", "Run sync daemon in foreground (blocking)")
     .option("--dir <directory>", "Sync directory (default: .kontexted in current directory)")
+    .option("-l, --log", "Tail daemon log file", false)
     .action(async (opts) => {
       await handlerYargs({
         daemon: opts.daemon,
         foreground: opts.foreground,
-        pollInterval: parseInt(opts.pollInterval, 10),
         dir: opts.dir,
+        log: opts.log,
       });
     });
 }

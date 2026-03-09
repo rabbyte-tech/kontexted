@@ -23,8 +23,8 @@ This file is for AI coding agents working in the Kontexted repository.
 
 ### Test
 - `make test` - Run tests for all apps (currently no formal tests configured)
-- No test framework configured; add Vitest/Jest when testing needed
 - To run a single test file with Vitest: `cd apps/client && npx vitest run path/to/test.test.ts`
+- No test framework configured; add Vitest/Jest when testing needed
 
 ### Database (Server)
 - `make db-generate` / `cd apps/server && bun run db:generate` - Generate migrations
@@ -38,17 +38,53 @@ This file is for AI coding agents working in the Kontexted repository.
 - `make docker-build` - Build Docker image
 - `make docker-run` - Run Docker container
 
+## Accessing Notes (Three Methods)
+
+### 1. Disk Sync (Recommended for AI Agents)
+Pull notes to disk for direct file access with real-time sync:
+
+```bash
+# Initialize sync in a project directory
+kontexted sync init --alias <profile> --dir .
+
+# Start sync daemon with file watching
+kontexted sync start --daemon
+
+# Sync creates .kontexted/ directory (gitignored)
+# A .ignore file with negation pattern allows LLM tools to reference files
+```
+
+The sync daemon watches for file changes and syncs bidirectionally with the server. Notes appear as markdown files at `.kontexted/folder/note.md`.
+
+### 2. MCP (Model Context Protocol)
+For AI assistants that support MCP:
+
+```bash
+kontexted mcp --alias <profile> [--write]
+```
+
+### 3. CLI Skill Commands
+Direct CLI access for workspace operations:
+
+```bash
+kontexted skill workspace-tree --alias <profile>
+kontexted skill search-notes --alias <profile> --query "<text>"
+kontexted skill note-by-id --alias <profile> --note-id <id>
+kontexted skill create-note --alias <profile> --name <slug> --title "<title>"
+kontexted skill update-note-content --alias <profile> --note-id <id> --content "<content>"
+```
+
 ## Code Style Guidelines
 
 ### Project Structure
-- Monorepo with pnpm workspaces (use `pnpm` or `bun` as package manager)
+- Monorepo with bun workspaces
 - `apps/client` - Vite + React 19 + TypeScript + Tailwind CSS
 - `apps/server` - Hono + Bun + TypeScript + Drizzle ORM
-- `apps/cli` - Commander-based CLI for MCP proxy and workspace management
+- `apps/cli` - Commander-based CLI for sync, MCP proxy, workspace management
 - Supports PostgreSQL (production) and SQLite (local dev)
 
 ### TypeScript Configuration
-- Strict mode enabled in both client and server
+- Strict mode enabled in all apps
 - Target: ES2022, Module: ESNext
 - Path alias `@/*` maps to `./src/*` in each app
 - `noUnusedLocals: true`, `noUnusedParameters: true` (client)
@@ -78,15 +114,12 @@ This file is for AI coding agents working in the Kontexted repository.
 - `src/features/*/mutations.ts` - TanStack Query mutation hooks
 - `src/lib/` - Shared utilities and helpers
 - `src/stores/` - Zustand state management
-- `src/router/` - TanStack Router configuration
-- `src/types/` - TypeScript type definitions
 
 ### File Organization (Server)
 - `src/routes/` - Hono route handlers grouped by feature
 - `src/routes/middleware/` - Hono middleware (auth, etc.)
 - `src/db/schema/` - Drizzle schema definitions (postgresql/ and sqlite/)
 - `src/lib/` - Shared utilities and helpers
-- `src/collab-ws/` - WebSocket collaboration logic
 
 ### React Patterns
 - Functional components with hooks only
@@ -96,85 +129,36 @@ This file is for AI coding agents working in the Kontexted repository.
 - shadcn/ui component library (Radix UI primitives)
 - Tailwind CSS for styling with `cn()` helper from `@/lib/utils`
 - Explicitly type all props with interfaces
-- Use JSDoc comments for mutation/query hook documentation
 
 ### Error Handling
 - Use custom error classes for domain errors (e.g., `UnauthorizedError`)
 - Type guards for unknown request bodies: `isRecord(value: unknown)`
-- Throw `Error` objects with descriptive messages
 - Server API responses: `c.json({ error: "message" }, status)`
 - Client API responses: `{ error?: string, data?: T, status: number }`
 
 ### API Design (Server)
 - RESTful API design with Hono
-- Route groups: `/api/workspaces/*`, `/api/collab/*`, `/api/config/*`
+- Route groups: `/api/workspaces/*`, `/api/sync/*`, `/api/collab/*`
 - Use `requireAuth` middleware for protected routes
 - Type Hono context with `Variables` interface for `session` and `db`
 - Use Drizzle ORM with proper types from schema
-- Return JSON responses with appropriate HTTP status codes
-- Use SSE (Server-Sent Events) for real-time updates via `workspaceEventHub`
 
 ### Database Patterns
 - Drizzle ORM with schema files in `src/db/schema/`
 - Separate schemas for PostgreSQL and SQLite (dialects)
 - Schema selection via `DATABASE_DIALECT` env var (defaults to sqlite)
-- Use `eq()`, `and()`, `or()`, `orderBy()` from `drizzle-orm`
 - Import schema from `@/db/schema` which auto-selects dialect
-
-### Type Safety
-- Zod for runtime validation (schema definitions)
-- Explicit typing for all route parameters and bodies
-- Use TypeScript generics for type-safe API responses
-- Type guards for narrowing unknown types
-- Avoid `any` except where absolutely necessary
-
-### Comments and Documentation
-- JSDoc comments for public functions, classes, and React hooks
-- Explain complex logic or non-obvious patterns
-- Keep comments concise and up-to-date
-- No inline comments for obvious code
-
-### Folder and Note Names
-- Valid patterns: kebab-case, camelCase, snake_case, PascalCase
-- Validated by `isValidFolderName()` utility in `@/lib/folder-name`
 
 ### Environment Variables
 - Server: see `apps/server/.env.example`
 - Use `process.env.VARIABLE_NAME` for server
 - Use `import.meta.env.VARIABLE_NAME` for client (Vite)
-- `DATABASE_DIALECT`: `sqlite` or `postgresql`
-- `DATABASE_URL`: SQLite file path or PostgreSQL connection string
-
-### ESLint Rules (Client)
-- TypeScript ESLint with recommended rules
-- `@typescript-eslint/no-unused-vars`: Error (ignore `_` prefix)
-- `@typescript-eslint/no-explicit-any`: Off
-- `react-hooks/exhaustive-deps`: Off
-- `react-refresh/only-export-components`: Warn (disabled for shadcn UI components)
 
 ### Bun Version
 - Minimum Bun: 1.0.0
-- Check `apps/server/package.json` and `apps/cli/package.json` engines field
-
-### Auth
-- Better Auth for authentication (email/password or Keycloak OAuth)
-- Session-based auth with JWT tokens
-- `requireAuth` middleware for protected routes
-- Token validation on WebSocket connections
-
-### WebSocket / Collaboration
-- Yjs CRDT for real-time collaboration
-- Hono WebSocket adapter for server
-- Room-based collaboration with document checkpoints
-- Manual-save mode when collab server is unavailable
-
-### MCP (Model Context Protocol)
-- MCP SDK used in both server and CLI
-- CLI provides MCP proxy functionality
-- Server exposes MCP endpoints for workspace integration
 
 ### Key Libraries
 - Client: React 19, TanStack Router, TanStack Query, Zustand, Lucide React
-- Server: Hono, Drizzle ORM, Better Auth, Yjs, jose (JWT), MCP SDK
-- CLI: Commander, yargs, MCP SDK
+- Server: Hono, Drizzle ORM, Better Auth, Yjs, MCP SDK
+- CLI: Commander, chokidar (file watching), MCP SDK
 - UI: Radix UI primitives, Tailwind CSS, CodeMirror for editor

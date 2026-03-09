@@ -85,6 +85,14 @@ export class SyncEngine {
       this.handleRemoteChange.bind(this),
       this.handleRemoteFolderChange.bind(this)
     );
+
+    // Set up callback for when remote listener stops permanently (max reconnects)
+    this.remoteListener.setOnStopped(() => {
+      console.log("[SyncEngine] Remote listener stopped permanently. Exiting...");
+      this.stop();
+      // Exit with error code to indicate abnormal termination
+      process.exit(1);
+    });
   }
 
   /**
@@ -741,11 +749,14 @@ export class SyncEngine {
 
     console.log(`[SyncEngine] Pushing create to server: ${relativePath}`);
 
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     const request: SyncPushRequest = {
       workspaceSlug: this.config.workspaceSlug,
       changes: [
         {
           type: "create",
+          tempId,
           name,
           title,
           content,

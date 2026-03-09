@@ -1,95 +1,18 @@
 import type { Command } from "commander";
+import { Database } from "bun:sqlite";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Database } from "bun:sqlite";
 import type { SyncConfig, SyncState, ConflictLogEntry } from "@/lib/sync/types";
+import {
+  DEFAULT_SYNC_DIR,
+  findSyncDir,
+  loadSyncConfig,
+  loadSyncState,
+  isDaemonRunning,
+  isPaused,
+} from "@/lib/sync/command-utils";
 
-/**
- * Default sync directory name
- */
-const DEFAULT_SYNC_DIR = ".kontexted";
 
-/**
- * Find the sync directory by looking for .kontexted/ or using --dir option
- */
-async function findSyncDir(cwd: string, dirArg?: string): Promise<string> {
-  // If --dir was provided, use it
-  if (dirArg) {
-    const syncDir = path.resolve(cwd, dirArg);
-    try {
-      await fs.access(syncDir);
-      return syncDir;
-    } catch {
-      console.error(`Error: Directory not found: ${syncDir}`);
-      process.exit(1);
-    }
-  }
-
-  // Otherwise, look for .kontexted/ in current directory
-  const defaultSyncDir = path.join(cwd, DEFAULT_SYNC_DIR);
-  try {
-    await fs.access(defaultSyncDir);
-    return defaultSyncDir;
-  } catch {
-    console.error(`Error: Sync directory not found.`);
-    console.error(`Expected to find '${DEFAULT_SYNC_DIR}/' in current directory or specify --dir option.`);
-    console.error(`Run 'kontexted sync init' first to initialize sync.`);
-    process.exit(1);
-  }
-}
-
-/**
- * Load sync configuration from .sync/config.json
- */
-async function loadSyncConfig(syncDir: string): Promise<SyncConfig> {
-  const configPath = path.join(syncDir, ".sync", "config.json");
-
-  try {
-    const configRaw = await fs.readFile(configPath, "utf-8");
-    return JSON.parse(configRaw) as SyncConfig;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      console.error(`Error: Sync configuration not found.`);
-      console.error(`Run 'kontexted sync init' first to initialize sync.`);
-      process.exit(1);
-    }
-    throw error;
-  }
-}
-
-/**
- * Load sync state from .sync/state.json
- */
-async function loadSyncState(syncDir: string): Promise<SyncState | null> {
-  const statePath = path.join(syncDir, ".sync", "state.json");
-
-  try {
-    const stateRaw = await fs.readFile(statePath, "utf-8");
-    return JSON.parse(stateRaw) as SyncState;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return null;
-    }
-    throw error;
-  }
-}
-
-/**
- * Check if daemon is running by verifying the PID
- */
-function isDaemonRunning(daemonPid: number | null): boolean {
-  if (!daemonPid) {
-    return false;
-  }
-
-  try {
-    // Check if process exists by sending signal 0 (no actual signal sent)
-    process.kill(daemonPid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Count pending changes in the queue database
@@ -168,7 +91,17 @@ async function collectStatus(
   error: string | null;
 }> {
   const isRunning = isDaemonRunning(config.daemonPid);
-  const status: "running" | "stopped" | "paused" | "error" = isRunning ? "running" : "stopped";
+  const paused = await isPaused(syncDir);
+
+  // Determine status: stopped if not running, paused if running but paused, otherwise running
+  let status: "running" | "stopped" | "paused" | "error";
+  if (!isRunning) {
+    status = "stopped";
+  } else if (paused) {
+    status = "paused";
+  } else {
+    status = "running";
+  }
 
   // Count synced files from state
   const filesSynced = state?.files ? Object.keys(state.files).length : 0;
@@ -179,9 +112,9 @@ async function collectStatus(
   // Get conflicts
   const conflicts = await getConflicts(syncDir);
 
-  // Calculate uptime
+  // Calculate uptime (only when actively running, not when paused)
   let uptime: number | null = null;
-  if (isRunning && config.initializedAt) {
+  if (status === "running" && config.initializedAt) {
     const startTime = new Date(config.initializedAt).getTime();
     const now = Date.now();
     uptime = Math.floor((now - startTime) / 1000);
