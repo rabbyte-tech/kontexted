@@ -27,6 +27,7 @@ import { workspacesApp as workspacesRoutes } from '@/routes/workspaces';
 import { collabApp as collabRoutes } from '@/routes/collab';
 import { configApp as configRoutes } from '@/routes/config';
 import { skillApp as skillRoutes } from '@/routes/skill';
+import { syncApp as syncRoutes } from '@/routes/sync';
 import { mcpRoute } from '@/mcp';
 import { setupStatic } from '@/static';
 import { GET as oauthAuthorizationServerGet } from '@/routes/.well-known/oauth-authorization-server';
@@ -105,6 +106,7 @@ app.route('/api/workspaces', workspacesRoutes);
 app.route('/api/collab', collabRoutes);
 app.route('/api/config', configRoutes);
 app.route('/api/skill', skillRoutes);
+app.route('/api/sync', syncRoutes);
 app.all('/mcp', (c) => mcpRoute(c.req.raw));
 
 // Health check

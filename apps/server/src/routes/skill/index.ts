@@ -13,7 +13,7 @@ import {
 } from "@/lib/workspace-tree-transform";
 import { db, dialect } from "@/db";
 import { notes, folders } from "@/db/schema";
-import { and, eq, ilike, or, asc, sql } from "drizzle-orm";
+import { and, eq, ilike, or, asc, sql, isNull } from "drizzle-orm";
 import {
   createFolderInWorkspace,
   createNoteInWorkspace,
@@ -180,6 +180,7 @@ skillApp.post("/search-notes", async (c) => {
     .where(
       and(
         eq(notes.workspaceId, workspaceId),
+        isNull(notes.deletedAt),
         or(caseInsensitiveLike(notes.title, pattern), caseInsensitiveLike(notes.name, pattern))
       )
     )

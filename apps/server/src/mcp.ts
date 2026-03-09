@@ -4,7 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod";
 import { db, dialect } from "@/db";
 import { notes, folders } from "@/db/schema";
-import { and, eq, ilike, or, asc, sql } from "drizzle-orm";
+import { and, eq, ilike, or, asc, sql, isNull } from "drizzle-orm";
 import { parseSlug, parsePublicId } from "@/lib/params";
 import { resolveWorkspaceId, resolveNoteId } from "@/lib/resolvers";
 import { getAuthBaseUrl } from "@/lib/auth-utils";
@@ -178,6 +178,7 @@ const getServer = () => {
       .where(
         and(
           eq(notes.workspaceId, workspaceIdValue),
+          isNull(notes.deletedAt),
           or(caseInsensitiveLike(notes.title, pattern), caseInsensitiveLike(notes.name, pattern))
         )
       )

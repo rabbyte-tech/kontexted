@@ -3,7 +3,8 @@ import { and, asc, eq, gt, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import { dialect } from "@/db";
-import { noteLineBlame, notes, revisions, users, workspaces } from "@/db/schema";
+import { db } from "@/db";
+import { noteLineBlame, notes, revisions, users, workspaces, folders } from "@/db/schema";
 import * as sqliteSchema from "@/db/schema/sqlite";
 import { parseSlug, parsePublicId } from "@/lib/params";
 import { buildNextBlame } from "@/lib/blame";
@@ -25,6 +26,47 @@ class NoteNotFoundError extends Error {
 
 class NoteNotInWorkspaceError extends Error {
   name = "NoteNotInWorkspaceError";
+}
+
+/**
+ * Build folder path from folder hierarchy
+ * @param folderId - The folder ID to build path for
+ * @param workspaceId - The workspace ID
+ * @param dbClient - Database client
+ * @returns The folder path string
+ */
+async function buildNoteFolderPath(
+  folderId: number | null,
+  workspaceId: number,
+  dbClient: typeof db
+): Promise<string> {
+  if (!folderId) {
+    return "";
+  }
+
+  const pathParts: string[] = [];
+  let currentId: number | null = folderId;
+
+  while (currentId) {
+    const folderRows = await dbClient
+      .select({
+        id: folders.id,
+        name: folders.name,
+        parentId: folders.parentId,
+      })
+      .from(folders)
+      .where(and(eq(folders.id, currentId), eq(folders.workspaceId, workspaceId)))
+      .limit(1);
+
+    if (!folderRows[0]) {
+      break;
+    }
+
+    pathParts.unshift(folderRows[0].name);
+    currentId = folderRows[0].parentId;
+  }
+
+  return pathParts.join("/");
 }
 
 const app = new Hono<{ Variables: Variables }>();
@@ -357,13 +399,45 @@ app.patch("/", async (c) => {
 
     stage = "publish";
     try {
-      workspaceEventHub.publish({
-        workspaceId: result.workspaceId,
-        type: "note.updated",
-        data: { id: result.noteId },
-      });
-    } catch {
-      console.warn("Failed to publish note.updated", { workspaceId: result.workspaceId, noteId: result.noteId });
+      // Fetch complete note data for SSE event
+      const noteRow = await db
+        .select({
+          id: notes.id,
+          publicId: notes.publicId,
+          name: notes.name,
+          title: notes.title,
+          content: notes.content,
+          folderId: notes.folderId,
+          updatedAt: notes.updatedAt,
+        })
+        .from(notes)
+        .where(eq(notes.id, result.noteId))
+        .limit(1);
+
+      if (noteRow[0]) {
+        // Build folder path if needed
+        let folderPath: string | null = null;
+        if (noteRow[0].folderId) {
+          folderPath = await buildNoteFolderPath(noteRow[0].folderId, result.workspaceId, db);
+        }
+
+        workspaceEventHub.publish({
+          workspaceId: result.workspaceId,
+          type: "note.updated",
+          data: {
+            id: noteRow[0].id,
+            publicId: noteRow[0].publicId,
+            name: noteRow[0].name,
+            title: noteRow[0].title,
+            content: noteRow[0].content,
+            folderId: noteRow[0].folderId,
+            folderPath,
+            updatedAt: noteRow[0].updatedAt.toISOString(),
+          },
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to publish note.updated", { workspaceId: result.workspaceId, noteId: result.noteId, error: err });
     }
 
     stage = "build-response";
@@ -417,3 +491,4 @@ app.patch("/", async (c) => {
 });
 
 export { app };
+export { buildNoteFolderPath };

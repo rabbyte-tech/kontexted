@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { workspaces, notes, folders } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 type DbClient = typeof db;
 type TxClient = typeof db extends { transaction: (fn: (tx: infer T) => any) => any } ? T : never;
@@ -19,7 +19,7 @@ export async function resolveNoteId(publicId: string, client: AnyDbClient = db):
   const rows = await client
     .select({ id: notes.id })
     .from(notes)
-    .where(eq(notes.publicId, publicId))
+    .where(and(eq(notes.publicId, publicId), isNull(notes.deletedAt)))
     .limit(1);
   return rows[0]?.id ?? null;
 }
@@ -28,7 +28,7 @@ export async function resolveNote(publicId: string, client: AnyDbClient = db) {
   const rows = await client
     .select({ id: notes.id, content: notes.content, workspaceId: notes.workspaceId })
     .from(notes)
-    .where(eq(notes.publicId, publicId))
+    .where(and(eq(notes.publicId, publicId), isNull(notes.deletedAt)))
     .limit(1);
   return rows[0] ?? null;
 }

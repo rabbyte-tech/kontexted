@@ -12,6 +12,28 @@ export class ApiClient {
   ) {}
 
   /**
+   * Get the base URL for API requests
+   */
+  get baseUrl(): string {
+    return this.serverUrl;
+  }
+
+  /**
+   * Get the current access token
+   */
+  getAccessToken(): string {
+    return this.oauth.tokens?.access_token ?? "";
+  }
+
+  /**
+   * Get the current OAuth state
+   * Useful for external callers to get the latest tokens after refresh
+   */
+  getOAuth(): OAuthState {
+    return this.oauth;
+  }
+
+  /**
    * Make an authenticated HTTP request
    * Automatically handles token refresh on 401 responses
    */
@@ -49,9 +71,16 @@ export class ApiClient {
         headers.Authorization = `Bearer ${this.oauth.tokens?.access_token}`;
         requestOptions.headers = headers;
 
+        logDebug(`[API CLIENT] New access token: ${this.oauth.tokens?.access_token?.substring(0, 20)}...`);
+
         // Retry the original request with new token
-        response = await fetch(url.toString(), requestOptions);
-        logDebug(`[API CLIENT] Retry response status: ${response.status}`);
+        try {
+          response = await fetch(url.toString(), requestOptions);
+          logDebug(`[API CLIENT] Retry response status: ${response.status}`);
+        } catch (fetchError) {
+          logError("[API CLIENT] Retry fetch failed:", fetchError);
+          throw fetchError;
+        }
       } else {
         throw new Error(
           "Failed to refresh access token. Please run 'kontexted login' to re-authenticate."

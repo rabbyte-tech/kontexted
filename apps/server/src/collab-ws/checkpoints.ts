@@ -1,11 +1,13 @@
 import * as Y from "yjs";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, sql, isNull } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import { db, dialect } from "@/db";
 import { noteLineBlame, notes, revisions } from "@/db/schema";
 import type * as sqliteSchema from "@/db/schema/sqlite";
 import { getRoom } from "./y-websocket-server";
+import { workspaceEventHub } from "@/lib/sse-hub";
+import { buildNoteFolderPath } from "@/routes/workspaces/note-content";
 
 type DbSchema = typeof import("@/db/schema").schema;
 
@@ -182,7 +184,7 @@ export const ensureRoomState = async (roomName: string, workspaceId: number, not
   const note = await db
     .select({ content: notes.content, updatedAt: notes.updatedAt })
     .from(notes)
-    .where(and(eq(notes.id, noteId), eq(notes.workspaceId, workspaceId)))
+    .where(and(eq(notes.id, noteId), eq(notes.workspaceId, workspaceId), isNull(notes.deletedAt)))
     .limit(1);
 
   if (note.length === 0) {
@@ -506,6 +508,46 @@ export const checkpointRoom = async (
     state.checkpointInFlight = false;
     pushStatusUpdate(state);
 
+    // After the checkpoint is saved successfully, publish SSE event for sync
+    if (state.noteId && state.notePublicId) {
+      try {
+        // Fetch complete note data for SSE
+        const noteRow = await db
+          .select({
+            name: notes.name,
+            title: notes.title,
+            folderId: notes.folderId,
+          })
+          .from(notes)
+          .where(eq(notes.id, state.noteId))
+          .limit(1);
+
+        if (noteRow[0]) {
+          // Build folder path
+          const folderPath = noteRow[0].folderId
+            ? await buildNoteFolderPath(noteRow[0].folderId, state.workspaceId, db)
+            : null;
+
+          workspaceEventHub.publish({
+            workspaceId: state.workspaceId,
+            type: "note.updated",
+            data: {
+              id: state.noteId,
+              publicId: state.notePublicId,
+              name: noteRow[0].name,
+              title: noteRow[0].title,
+              content: currentContent,
+              folderId: noteRow[0].folderId,
+              folderPath,
+              updatedAt: new Date().toISOString(),
+            },
+          });
+        }
+      } catch (err) {
+        console.warn("[collab] Failed to publish SSE event for checkpoint", err);
+      }
+    }
+
     if (state.hasUnsavedChanges) {
       scheduleCheckpoint(state);
     } else {
@@ -570,7 +612,7 @@ export const seedDocumentIfEmpty = async (
   const note = await db
     .select({ content: notes.content })
     .from(notes)
-    .where(and(eq(notes.id, noteId), eq(notes.workspaceId, workspaceId)))
+    .where(and(eq(notes.id, noteId), eq(notes.workspaceId, workspaceId), isNull(notes.deletedAt)))
     .limit(1);
 
   if (note.length > 0) {
@@ -589,7 +631,7 @@ export const checkNeedsReseed = async (roomName: string): Promise<boolean> => {
   const note = await db
     .select({ updatedAt: notes.updatedAt, content: notes.content })
     .from(notes)
-    .where(and(eq(notes.id, state.noteId), eq(notes.workspaceId, state.workspaceId)))
+    .where(and(eq(notes.id, state.noteId), eq(notes.workspaceId, state.workspaceId), isNull(notes.deletedAt)))
     .limit(1);
 
   if (note.length === 0) {
@@ -619,7 +661,7 @@ export const reseedDocumentFromDb = async (roomName: string): Promise<void> => {
   const note = await db
     .select({ content: notes.content })
     .from(notes)
-    .where(and(eq(notes.id, state.noteId), eq(notes.workspaceId, state.workspaceId)))
+    .where(and(eq(notes.id, state.noteId), eq(notes.workspaceId, state.workspaceId), isNull(notes.deletedAt)))
     .limit(1);
 
   if (note.length === 0) {

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { folders, notes, noteLineBlame, revisions } from "@/db/schema";
 import { parseSlug, parsePublicId } from "@/lib/params";
 import { isValidFolderName } from "@/lib/folder-name";
@@ -28,7 +28,7 @@ async function collectNoteIds(folderIds: number[], workspaceId: number, db: DbCl
   const noteRows = await db
     .select({ id: notes.id })
     .from(notes)
-    .where(and(eq(notes.workspaceId, workspaceId), inArray(notes.folderId, folderIds)));
+    .where(and(eq(notes.workspaceId, workspaceId), inArray(notes.folderId, folderIds), isNull(notes.deletedAt)));
 
   return noteRows.map((row: { id: number }) => row.id);
 }
@@ -246,17 +246,19 @@ app.delete("/:folderId", requireAuth, async (c) => {
   const allNoteIds = await collectNoteIds(allFolderIds, workspaceIdValue, db);
 
   if (allNoteIds.length > 0) {
-    await db.delete(noteLineBlame).where(inArray(noteLineBlame.noteId, allNoteIds));
-    await db.delete(revisions).where(inArray(revisions.noteId, allNoteIds));
-    await db.delete(notes).where(inArray(notes.id, allNoteIds));
+    // Soft delete: mark all notes in the folder as deleted
+    await db
+      .update(notes)
+      .set({ deletedAt: new Date() })
+      .where(inArray(notes.id, allNoteIds));
   }
 
   await db.delete(folders).where(inArray(folders.id, allFolderIds));
 
   workspaceEventHub.publish({
     workspaceId: workspaceIdValue,
-    type: "folder.updated",
-    data: { id: folderIdValue },
+    type: "folder.deleted",
+    data: { publicId: folderPublicIdValue },
   });
 
   return c.json({ success: true }, 200);

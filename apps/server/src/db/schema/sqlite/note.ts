@@ -25,6 +25,7 @@ export const notes = sqliteTable(
     updatedAt: integer({ mode: "timestamp_ms" })
       .default(sql`(unixepoch() * 1000)`)
       .notNull(),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   },
   (table) => [
     index("notes_public_id_idx").on(table.publicId),

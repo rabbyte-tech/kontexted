@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { folders, notes, workspaces } from "@/db/schema";
 
@@ -106,7 +106,7 @@ export const getWorkspaceTree = async (workspaceId: number): Promise<WorkspaceTr
   const noteRows = await db
     .select({ id: notes.id, publicId: notes.publicId, name: notes.name, title: notes.title, folderId: notes.folderId })
     .from(notes)
-    .where(eq(notes.workspaceId, workspaceId));
+    .where(and(eq(notes.workspaceId, workspaceId), isNull(notes.deletedAt)));
 
   const tree = buildFolderTree(folderRows, noteRows);
 

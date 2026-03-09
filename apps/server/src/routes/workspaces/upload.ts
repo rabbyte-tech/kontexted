@@ -24,8 +24,8 @@ const generateUniqueName = async (
     .from(notes)
     .where(
       folderId === null
-        ? and(eq(notes.workspaceId, workspaceId), isNull(notes.folderId))
-        : and(eq(notes.workspaceId, workspaceId), eq(notes.folderId, folderId!))
+        ? and(eq(notes.workspaceId, workspaceId), isNull(notes.folderId), isNull(notes.deletedAt))
+        : and(eq(notes.workspaceId, workspaceId), eq(notes.folderId, folderId!), isNull(notes.deletedAt))
     );
 
   const existingNames = new Set(existingNotes.map((n) => n.name));
