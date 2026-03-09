@@ -1,6 +1,6 @@
 type WorkspaceEvent = {
   workspaceId: number;
-  type: "folder.created" | "note.created" | "folder.updated" | "note.updated" | "ready";
+  type: "folder.created" | "note.created" | "folder.updated" | "note.updated" | "note.deleted" | "folder.deleted" | "ready";
   data: unknown;
 };
 

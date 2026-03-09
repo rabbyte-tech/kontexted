@@ -6,6 +6,7 @@ import { resolveWorkspaceId, resolveFolderId, resolveNoteId, resolveNote } from 
 import { workspaceEventHub } from "@/lib/sse-hub";
 import { isValidFolderName } from "@/lib/folder-name";
 import { pushExternalUpdateToRoom } from "@/collab-ws/checkpoints";
+import { buildNoteFolderPath } from "@/routes/workspaces/note-content";
 
 // ============================================================================
 // Types
@@ -112,8 +113,8 @@ async function checkDuplicateNoteName(
   folderId: number | null
 ): Promise<boolean> {
   const condition = folderId === null
-    ? and(eq(notes.workspaceId, workspaceId), eq(notes.name, name), isNull(notes.folderId))
-    : and(eq(notes.workspaceId, workspaceId), eq(notes.name, name), eq(notes.folderId, folderId));
+    ? and(eq(notes.workspaceId, workspaceId), eq(notes.name, name), isNull(notes.folderId), isNull(notes.deletedAt))
+    : and(eq(notes.workspaceId, workspaceId), eq(notes.name, name), eq(notes.folderId, folderId), isNull(notes.deletedAt));
 
   const existing = await db
     .select({ id: notes.id })
@@ -412,12 +413,42 @@ export async function updateNoteContentInWorkspace(
     console.warn(`[write-ops] Failed to push external update to room: ${roomName}`, error);
   }
 
-  // Publish SSE event
-  workspaceEventHub.publish({
-    workspaceId,
-    type: "note.updated",
-    data: { id: noteId },
-  });
+  // Publish SSE event with complete note data
+  const noteRow = await db
+    .select({
+      id: notes.id,
+      publicId: notes.publicId,
+      name: notes.name,
+      title: notes.title,
+      content: notes.content,
+      folderId: notes.folderId,
+      updatedAt: notes.updatedAt,
+    })
+    .from(notes)
+    .where(eq(notes.id, noteId))
+    .limit(1);
+
+  if (noteRow[0]) {
+    // Build folder path
+    const folderPath = noteRow[0].folderId
+      ? await buildNoteFolderPath(noteRow[0].folderId, workspaceId, db)
+      : null;
+
+    workspaceEventHub.publish({
+      workspaceId,
+      type: "note.updated",
+      data: {
+        id: noteRow[0].id,
+        publicId: noteRow[0].publicId,
+        name: noteRow[0].name,
+        title: noteRow[0].title,
+        content: noteRow[0].content,
+        folderId: noteRow[0].folderId,
+        folderPath,
+        updatedAt: noteRow[0].updatedAt.toISOString(),
+      },
+    });
+  }
 
   return {
     publicId: updatedNote.publicId,

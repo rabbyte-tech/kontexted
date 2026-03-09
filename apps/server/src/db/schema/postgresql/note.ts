@@ -20,6 +20,7 @@ export const notes = pgTable(
     content: text("content").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { mode: "date" }),
   },
   (table) => [
     index("notes_public_id_idx").on(table.publicId),

@@ -5,6 +5,7 @@ import { registerShowConfigCommand } from "@/commands/show-config";
 import { registerMcpCommand } from "@/commands/mcp";
 import { registerSkillCommand } from "@/commands/skill";
 import { registerServerCommand } from "@/commands/server";
+import { registerSyncCommand } from "@/commands/sync";
 
 const program = new Command();
 
@@ -20,6 +21,7 @@ registerShowConfigCommand(program);
 registerSkillCommand(program);
 registerMcpCommand(program);
 registerServerCommand(program);
+registerSyncCommand(program);
 
 // Parse arguments
 program.parseAsync(process.argv).catch((error) => {

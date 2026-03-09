@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, isNull } from "drizzle-orm";
 import { notes, noteLineBlame, revisions, users } from "@/db/schema";
 import { parseSlug, parsePublicId } from "@/lib/params";
 import { resolveWorkspaceId, resolveNoteId, resolveFolderId } from "@/lib/resolvers";
@@ -8,6 +8,7 @@ import { isValidFolderName } from "@/lib/folder-name";
 import { requireAuth } from "@/routes/middleware/require-auth";
 import type { Variables, DbClient, NoteBody, NoteMoveBody } from "@/routes/types";
 import { isRecord } from "@/routes/types";
+import { buildNoteFolderPath } from "./note-content";
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -26,10 +27,11 @@ app.get("/", requireAuth, async (c) => {
     return c.json({ error: "Workspace not found" }, 404);
   }
 
+  // Filter out soft-deleted notes
   const rows = await db
     .select()
     .from(notes)
-    .where(eq(notes.workspaceId, workspaceIdValue));
+    .where(and(eq(notes.workspaceId, workspaceIdValue), isNull(notes.deletedAt)));
 
   return c.json(rows, 200);
 });
@@ -60,13 +62,15 @@ app.get("/:noteId", requireAuth, async (c) => {
     return c.json({ error: "Note not found" }, 404);
   }
 
+  // Filter out soft-deleted notes
   const rows = await db
     .select()
     .from(notes)
     .where(
       and(
         eq(notes.workspaceId, workspaceIdValue),
-        eq(notes.id, noteIdValue)
+        eq(notes.id, noteIdValue),
+        isNull(notes.deletedAt)
       )
     )
     .limit(1);
@@ -138,14 +142,15 @@ app.get("/:noteId/history", requireAuth, async (c) => {
     return c.json({ error: "Note not found" }, 404);
   }
 
-  // Verify note belongs to workspace
+  // Verify note belongs to workspace and is not soft-deleted
   const noteCheck = await db
     .select({ id: notes.id })
     .from(notes)
     .where(
       and(
         eq(notes.workspaceId, workspaceIdValue),
-        eq(notes.id, noteIdValue)
+        eq(notes.id, noteIdValue),
+        isNull(notes.deletedAt)
       )
     )
     .limit(1);
@@ -322,13 +327,15 @@ app.patch("/:noteId", requireAuth, async (c) => {
     return c.json({ error: "Note not found" }, 404);
   }
 
+  // Check if note exists and is not soft-deleted, fetch content for SSE event
   const existing = await db
-    .select({ id: notes.id, folderId: notes.folderId })
+    .select({ id: notes.id, folderId: notes.folderId, content: notes.content })
     .from(notes)
     .where(
       and(
         eq(notes.workspaceId, workspaceIdValue),
-        eq(notes.id, noteIdValue)
+        eq(notes.id, noteIdValue),
+        isNull(notes.deletedAt)
       )
     )
     .limit(1);
@@ -336,6 +343,8 @@ app.patch("/:noteId", requireAuth, async (c) => {
   if (!existing[0]) {
     return c.json({ error: "Note not found" }, 404);
   }
+
+  const currentContent = existing[0].content ?? "";
 
   const updatedRows = await db
     .update(notes)
@@ -352,14 +361,30 @@ app.patch("/:noteId", requireAuth, async (c) => {
       name: notes.name,
       title: notes.title,
       folderId: notes.folderId,
+      content: notes.content,
+      updatedAt: notes.updatedAt,
     });
 
   const updated = updatedRows[0];
 
+  // Build folder path for SSE event
+  const folderPath = updated.folderId
+    ? await buildNoteFolderPath(updated.folderId, workspaceIdValue, db)
+    : null;
+
   workspaceEventHub.publish({
     workspaceId: workspaceIdValue,
     type: "note.updated",
-    data: updated,
+    data: {
+      id: updated.id,
+      publicId: updated.publicId,
+      name: updated.name,
+      title: updated.title,
+      content: currentContent,
+      folderId: updated.folderId,
+      folderPath,
+      updatedAt: updated.updatedAt.toISOString(),
+    },
   });
 
   return c.json(updated, 200);
@@ -391,13 +416,15 @@ app.delete("/:noteId", requireAuth, async (c) => {
     return c.json({ error: "Note not found" }, 404);
   }
 
+  // Check if note exists and is not already soft-deleted
   const existing = await db
-    .select({ id: notes.id })
+    .select({ id: notes.id, publicId: notes.publicId })
     .from(notes)
     .where(
       and(
         eq(notes.workspaceId, workspaceIdValue),
-        eq(notes.id, noteIdValue)
+        eq(notes.id, noteIdValue),
+        isNull(notes.deletedAt)
       )
     )
     .limit(1);
@@ -406,19 +433,23 @@ app.delete("/:noteId", requireAuth, async (c) => {
     return c.json({ error: "Note not found" }, 404);
   }
 
-  await db.delete(noteLineBlame).where(eq(noteLineBlame.noteId, noteIdValue));
-  await db.delete(revisions).where(eq(revisions.noteId, noteIdValue));
-  await db.delete(notes).where(
-    and(
-      eq(notes.workspaceId, workspaceIdValue),
-      eq(notes.id, noteIdValue)
-    )
-  );
+  const note = existing[0];
+
+  // Soft delete: mark note as deleted instead of hard deleting
+  await db
+    .update(notes)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(notes.workspaceId, workspaceIdValue),
+        eq(notes.id, noteIdValue)
+      )
+    );
 
   workspaceEventHub.publish({
     workspaceId: workspaceIdValue,
-    type: "note.updated",
-    data: { id: noteIdValue },
+    type: "note.deleted",
+    data: { publicId: note.publicId, id: noteIdValue },
   });
 
   return c.json({ success: true }, 200);
@@ -471,12 +502,13 @@ app.patch("/:noteId/move", requireAuth, async (c) => {
   }
 
   const existing = await db
-    .select({ id: notes.id, folderId: notes.folderId })
+    .select({ id: notes.id, folderId: notes.folderId, content: notes.content })
     .from(notes)
     .where(
       and(
         eq(notes.workspaceId, workspaceIdValue),
-        eq(notes.id, noteIdValue)
+        eq(notes.id, noteIdValue),
+        isNull(notes.deletedAt)
       )
     )
     .limit(1);
@@ -484,6 +516,8 @@ app.patch("/:noteId/move", requireAuth, async (c) => {
   if (!existing[0]) {
     return c.json({ error: "Note not found" }, 404);
   }
+
+  const currentContent = existing[0].content ?? "";
 
   const updatedRows = await db
     .update(notes)
@@ -495,14 +529,30 @@ app.patch("/:noteId/move", requireAuth, async (c) => {
       name: notes.name,
       title: notes.title,
       folderId: notes.folderId,
+      content: notes.content,
+      updatedAt: notes.updatedAt,
     });
 
   const updated = updatedRows[0];
 
+  // Build folder path for SSE event
+  const folderPath = updated.folderId
+    ? await buildNoteFolderPath(updated.folderId, workspaceIdValue, db)
+    : null;
+
   workspaceEventHub.publish({
     workspaceId: workspaceIdValue,
     type: "note.updated",
-    data: updated,
+    data: {
+      id: updated.id,
+      publicId: updated.publicId,
+      name: updated.name,
+      title: updated.title,
+      content: currentContent,
+      folderId: updated.folderId,
+      folderPath,
+      updatedAt: updated.updatedAt.toISOString(),
+    },
   });
 
   return c.json(updated, 200);
