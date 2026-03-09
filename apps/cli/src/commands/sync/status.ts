@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { SyncConfig, SyncState, ConflictLogEntry } from "@/lib/sync/types";
@@ -22,9 +22,9 @@ function countPendingChanges(syncDir: string): number {
 
   try {
     const db = new Database(queuePath, { readonly: true });
-    const result = db.query<{ count: number }, []>(
-      "SELECT COUNT(*) as count FROM pending_changes"
-    ).get();
+    const result = db
+      .prepare("SELECT COUNT(*) as count FROM pending_changes")
+      .get() as { count: number } | undefined;
     db.close();
     return result?.count ?? 0;
   } catch {

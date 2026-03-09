@@ -8,6 +8,7 @@ import type { SyncConfig, SyncState, FileSyncState, FolderSyncState, RemoteNote,
 import { sha256 } from "@/lib/sync/crypto";
 import { updateGitignore, formatMarkdown, ensureDirectoryExists } from "@/lib/sync/utils";
 import { logDebug } from "@/lib/logger";
+import Database from "better-sqlite3";
 
 // ============ Types ============
 
@@ -128,7 +129,7 @@ export const handler = async (argv: { alias?: string; workspace?: string; dir?: 
 
   // Step 5: Initialize SQLite queue database
   console.log("Initializing queue database...");
-  await initializeQueueDatabase(queueDbPath);
+  initializeQueueDatabase(queueDbPath);
 
   // Step 6: Create API client and fetch workspace data
   console.log("Fetching workspace data from server...");
@@ -283,10 +284,7 @@ export const handler = async (argv: { alias?: string; workspace?: string; dir?: 
 /**
  * Initialize the SQLite queue database with the pending_changes table.
  */
-async function initializeQueueDatabase(dbPath: string): Promise<void> {
-  // Use Bun's SQLite driver
-  const { Database } = await import("bun:sqlite");
-
+function initializeQueueDatabase(dbPath: string): void {
   // Create database (this will also create the file)
   const db = new Database(dbPath);
 

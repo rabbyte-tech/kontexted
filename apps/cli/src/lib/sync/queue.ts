@@ -3,14 +3,14 @@
  * @packageDocumentation
  */
 
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 import type { PendingChange, FileChangeEvent } from "./types";
 
 /**
  * Queue for managing pending file changes to be synced
  */
 export class Queue {
-  private db: Database;
+  private db: Database.Database;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
@@ -18,7 +18,7 @@ export class Queue {
   }
 
   private init(): void {
-    this.db.run(`
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS pending_changes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         file_path TEXT NOT NULL,
@@ -54,7 +54,7 @@ export class Queue {
    * @returns Array of pending changes ordered by detection time
    */
   getAll(): PendingChange[] {
-    return this.db.query<PendingChange, []>(`
+    return this.db.prepare(`
       SELECT
         id,
         file_path AS filePath,
@@ -65,7 +65,7 @@ export class Queue {
         last_error AS lastError
       FROM pending_changes
       ORDER BY detected_at ASC
-    `).all();
+    `).all() as PendingChange[];
   }
 
   /**
@@ -73,7 +73,7 @@ export class Queue {
    * @param id - The ID of the pending change to remove
    */
   remove(id: number): void {
-    this.db.run(`DELETE FROM pending_changes WHERE id = ?`, [id]);
+    this.db.prepare(`DELETE FROM pending_changes WHERE id = ?`).run(id);
   }
 
   /**
@@ -82,10 +82,9 @@ export class Queue {
    * @param error - The error message to record
    */
   incrementRetry(id: number, error: string): void {
-    this.db.run(
-      `UPDATE pending_changes SET retry_count = retry_count + 1, last_error = ? WHERE id = ?`,
-      [error, id]
-    );
+    this.db.prepare(
+      `UPDATE pending_changes SET retry_count = retry_count + 1, last_error = ? WHERE id = ?`
+    ).run(error, id);
   }
 
   /**
@@ -93,9 +92,9 @@ export class Queue {
    * @returns Number of pending changes
    */
   getCount(): number {
-    const result = this.db.query<{ count: number }, []>(
+    const result = this.db.prepare(
       `SELECT COUNT(*) as count FROM pending_changes`
-    ).get();
+    ).get() as { count: number } | undefined;
     return result?.count ?? 0;
   }
 

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { profileExists, getProfile } from "@/lib/profile";
 import type { SyncConfig } from "./types";
 
@@ -222,11 +223,9 @@ export async function daemonize(syncDir: string): Promise<{ isParent: boolean; l
 
   // Spawn child process with detached: true
   // The child will have SYNC_DAEMON_CHILD=1 in its environment
-  const child = Bun.spawn([process.argv[0], ...process.argv.slice(1)], {
+  const child = spawn(process.argv[0], process.argv.slice(1), {
     detached: true,
-    stdin: "ignore",
-    stdout: logFile.fd,
-    stderr: logFile.fd,
+    stdio: ["ignore", logFile.fd, logFile.fd],
     env: {
       ...process.env,
       SYNC_DAEMON_CHILD: "1",
@@ -237,7 +236,7 @@ export async function daemonize(syncDir: string): Promise<{ isParent: boolean; l
   // Unref so parent doesn't wait for child
   child.unref();
 
-  const pid = child.pid;
+  const pid = child.pid!;
 
   // Write PID to config
   await writeDaemonPid(syncDir, pid);
