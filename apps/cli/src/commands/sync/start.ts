@@ -1,20 +1,19 @@
 import type { Command } from "commander";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readConfig, writeConfig } from "@/lib/config";
-import { getProfile } from "@/lib/profile";
+import { readConfig } from "@/lib/config";
 import { ApiClient } from "@/lib/api-client";
 import { SyncEngine } from "@/lib/sync/sync-engine";
+import { createAuthenticatedClient } from "@/lib/sync/auth-utils";
+import type { Profile } from "@/types";
 import {
   findSyncDir,
   loadSyncConfig,
-  validateProfile,
   daemonize,
   isDaemonChild,
   watchDaemonLog,
   clearDaemonPid,
 } from "@/lib/sync/command-utils";
-import type { OAuthState } from "@/types";
 
 /**
  * Setup console logging to file in daemon mode
@@ -141,32 +140,31 @@ export async function handler(argv: {
   console.log("Loading sync configuration...");
   const syncConfig = await loadSyncConfig(syncDir);
 
-  // Step 3: Validate profile
-  console.log("Validating profile...");
-  const config = await readConfig();
-  const profile = validateProfile(config, syncConfig.alias);
+  // Step 3: Authenticate and create API client
+  console.log("Validating profile and authenticating...");
+  let apiClient: ApiClient;
+  let profile: Profile;
 
-  // Step 4: Create API client
-  const apiClient = new ApiClient(
-    profile.serverUrl,
-    profile.oauth as OAuthState,
-    async () => {
-      // Update config with refreshed tokens
-      const updatedConfig = await readConfig();
-      const updatedProfile = getProfile(updatedConfig, syncConfig.alias);
-      if (updatedProfile) {
-        updatedProfile.oauth = profile.oauth;
-        await writeConfig(updatedConfig);
-      }
+  try {
+    const auth = await createAuthenticatedClient(syncConfig.alias);
+    apiClient = auth.client;
+    profile = auth.profile;
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`\nError: ${error.message}`);
+    } else {
+      console.error("\nError: Failed to authenticate. Please run 'kontexted login'...");
     }
-  );
+    process.exit(1);
+  }
 
   // Test API connection
   try {
     const response = await apiClient.get(`/api/sync/pull?workspaceSlug=${encodeURIComponent(syncConfig.workspaceSlug)}`);
     if (!response.ok) {
+      // 401 should not happen here since we already validated, but handle just in case
       if (response.status === 401) {
-        console.error("\nError: Authentication failed. Please run 'kontexted login' to re-authenticate.");
+        console.error("\nError: Authentication failed unexpectedly. Please try 'kontexted login'...");
         process.exit(1);
       }
       const errorText = await response.text();

@@ -44,7 +44,15 @@ async function startMcpProxy(options: McpOptions): Promise<void> {
   }
 
   const persist = async () => {
-    await writeConfig(config);
+    const freshConfig = await readConfig();
+    const freshProfile = getProfile(freshConfig, profileKey);
+    if (freshProfile && profile.oauth.tokens) {
+      freshProfile.oauth = {
+        ...profile.oauth,
+        tokens: { ...profile.oauth.tokens },
+      };
+      await writeConfig(freshConfig);
+    }
   };
 
   try {

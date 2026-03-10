@@ -1,12 +1,12 @@
 import type { Command } from "commander";
 import * as readline from "readline";
-import { readConfig, writeConfig } from "@/lib/config";
-import { getProfile, listProfiles } from "@/lib/profile";
+import { readConfig } from "@/lib/config";
+import { listProfiles } from "@/lib/profile";
 import type { Profile } from "@/types";
 import { ApiClient } from "@/lib/api-client";
-import { ensureValidTokens } from "@/lib/oauth";
 import { getProvider, allTemplates } from "@/skill-init/index";
 import { initSkill } from "@/skill-init/utils";
+import { createAuthenticatedClient } from "@/lib/sync/auth-utils";
 
 /**
  * Execute workspace-tree skill via the API
@@ -144,36 +144,18 @@ async function executeUpdateNoteContent(
 /**
  * Helper function to create an API client from a profile alias
  */
-async function createApiClient(alias: string): Promise<ApiClient> {
-  const config = await readConfig();
-  const profile = getProfile(config, alias);
-
-  if (!profile) {
-    console.error(
-      `Profile not found: ${alias}. Run 'kontexted login' first.`
-    );
+async function createApiClient(alias: string): Promise<{ client: ApiClient; profile: Profile }> {
+  try {
+    const auth = await createAuthenticatedClient(alias);
+    return { client: auth.client, profile: auth.profile };
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`\nError: ${error.message}`);
+    } else {
+      console.error("\nError: Failed to authenticate. Please run 'kontexted login'...");
+    }
     process.exit(1);
   }
-
-  // Proactively refresh token if needed (non-interactive)
-  const tokensValid = await ensureValidTokens(
-    profile.oauth,
-    async () => writeConfig(config),
-    profile.serverUrl
-  );
-
-  if (!tokensValid) {
-    console.error(
-      `Authentication expired. Run 'kontexted login --alias ${alias}' to re-authenticate.`
-    );
-    process.exit(1);
-  }
-
-  return new ApiClient(
-    profile.serverUrl,
-    profile.oauth,
-    async () => writeConfig(config)
-  );
 }
 
 /**
@@ -254,18 +236,9 @@ export function registerSkillCommand(program: Command): void {
     .requiredOption("--alias <name>", "Profile alias to use")
     .action(async (options) => {
       try {
-        const client = await createApiClient(options.alias);
-        const config = await readConfig();
-        const profile = getProfile(config, options.alias);
+        const { client: apiClient, profile } = await createApiClient(options.alias);
 
-        if (!profile) {
-          console.error(
-            `Profile not found: ${options.alias}. Run 'kontexted login' first.`
-          );
-          process.exit(1);
-        }
-
-        const result = await executeWorkspaceTree(client, profile.workspace);
+        const result = await executeWorkspaceTree(apiClient, profile.workspace);
         displayResult(result);
       } catch (error) {
         console.error(
@@ -283,19 +256,10 @@ export function registerSkillCommand(program: Command): void {
     .option("--limit <number>", "Maximum number of results (default: 20, max: 50)", parseInt)
     .action(async (options) => {
       try {
-        const client = await createApiClient(options.alias);
-        const config = await readConfig();
-        const profile = getProfile(config, options.alias);
-
-        if (!profile) {
-          console.error(
-            `Profile not found: ${options.alias}. Run 'kontexted login' first.`
-          );
-          process.exit(1);
-        }
+        const { client: apiClient, profile } = await createApiClient(options.alias);
 
         const result = await executeSearchNotes(
-          client,
+          apiClient,
           profile.workspace,
           options.query,
           options.limit
@@ -316,19 +280,10 @@ export function registerSkillCommand(program: Command): void {
     .requiredOption("--note-id <id>", "Public ID of the note")
     .action(async (options) => {
       try {
-        const client = await createApiClient(options.alias);
-        const config = await readConfig();
-        const profile = getProfile(config, options.alias);
-
-        if (!profile) {
-          console.error(
-            `Profile not found: ${options.alias}. Run 'kontexted login' first.`
-          );
-          process.exit(1);
-        }
+        const { client: apiClient, profile } = await createApiClient(options.alias);
 
         const result = await executeNoteById(
-          client,
+          apiClient,
           profile.workspace,
           options.noteId
         );
@@ -350,14 +305,7 @@ export function registerSkillCommand(program: Command): void {
     .option("--parent-id <parentPublicId>", "Public ID of parent folder (for nested folders)")
     .action(async (options) => {
       try {
-        const client = await createApiClient(options.alias);
-        const config = await readConfig();
-        const profile = getProfile(config, options.alias);
-
-        if (!profile) {
-          console.error(`Profile not found: ${options.alias}. Run 'kontexted login' first.`);
-          process.exit(1);
-        }
+        const { client: apiClient, profile } = await createApiClient(options.alias);
 
         if (!profile.write) {
           console.error("Error: Write operations not enabled for this profile. Re-login with 'kontexted login --alias <alias> --write' to enable write access.");
@@ -365,7 +313,7 @@ export function registerSkillCommand(program: Command): void {
         }
 
         const result = await executeCreateFolder(
-          client,
+          apiClient,
           profile.workspace,
           options.name,
           options.displayName,
@@ -388,14 +336,7 @@ export function registerSkillCommand(program: Command): void {
     .option("--content <content>", "Initial content for the note")
     .action(async (options) => {
       try {
-        const client = await createApiClient(options.alias);
-        const config = await readConfig();
-        const profile = getProfile(config, options.alias);
-
-        if (!profile) {
-          console.error(`Profile not found: ${options.alias}. Run 'kontexted login' first.`);
-          process.exit(1);
-        }
+        const { client: apiClient, profile } = await createApiClient(options.alias);
 
         if (!profile.write) {
           console.error("Error: Write operations not enabled for this profile. Re-login with 'kontexted login --alias <alias> --write' to enable write access.");
@@ -403,7 +344,7 @@ export function registerSkillCommand(program: Command): void {
         }
 
         const result = await executeCreateNote(
-          client,
+          apiClient,
           profile.workspace,
           options.name,
           options.title,
@@ -425,14 +366,7 @@ export function registerSkillCommand(program: Command): void {
     .requiredOption("--content <content>", "New content for the note")
     .action(async (options) => {
       try {
-        const client = await createApiClient(options.alias);
-        const config = await readConfig();
-        const profile = getProfile(config, options.alias);
-
-        if (!profile) {
-          console.error(`Profile not found: ${options.alias}. Run 'kontexted login' first.`);
-          process.exit(1);
-        }
+        const { client: apiClient, profile } = await createApiClient(options.alias);
 
         if (!profile.write) {
           console.error("Error: Write operations not enabled for this profile. Re-login with 'kontexted login --alias <alias> --write' to enable write access.");
@@ -440,7 +374,7 @@ export function registerSkillCommand(program: Command): void {
         }
 
         const result = await executeUpdateNoteContent(
-          client,
+          apiClient,
           profile.workspace,
           options.noteId,
           options.content

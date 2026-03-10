@@ -47,33 +47,60 @@ export class RemoteListener {
     const url = `${this.apiClient.baseUrl}/api/sync/events?workspaceSlug=${encodeURIComponent(this.workspaceSlug)}`;
     this.abortController = new AbortController();
 
+    // Get fresh token before connecting
+    let accessToken = this.apiClient.getAccessToken();
+    
+    if (!accessToken) {
+      console.error("[RemoteListener] No access token available");
+      this.handleReconnect();
+      return;
+    }
+
     try {
       const response = await fetch(url, {
         method: "GET",
         headers: {
           "Accept": "text/event-stream",
-          "Authorization": `Bearer ${this.apiClient.getAccessToken()}`,
+          "Authorization": `Bearer ${accessToken}`,
         },
         signal: this.abortController.signal,
       });
 
       if (!response.ok) {
         if (response.status === 401) {
-          console.error("[RemoteListener] Authentication failed. Token may be expired.");
+          console.warn("[RemoteListener] Token expired, attempting to refresh...");
+          
+          // Attempt to refresh the token via ApiClient
+          const refreshed = await this.apiClient.refreshToken();
+          
+          if (refreshed) {
+            // Retry the connection with the new token
+            const newToken = this.apiClient.getAccessToken();
+            if (newToken) {
+              console.log("[RemoteListener] Token refreshed, retrying connection...");
+              const retryResponse = await fetch(url, {
+                method: "GET",
+                headers: {
+                  "Accept": "text/event-stream",
+                  "Authorization": `Bearer ${newToken}`,
+                },
+                signal: this.abortController.signal,
+              });
+              
+              if (retryResponse.ok) {
+                // Success on retry - handle SSE connection
+                await this.handleSSEConnection(retryResponse);
+                return;
+              }
+            }
+          }
+          
+          console.error("[RemoteListener] Authentication failed after refresh attempt.");
         }
         throw new Error(`SSE connection failed: ${response.status}`);
       }
 
-      if (!response.body) {
-        throw new Error("No response body");
-      }
-
-      // Reset reconnect attempts on successful connection
-      this.reconnectAttempts = 0;
-      console.log("[RemoteListener] Connected to SSE");
-
-      // Process the stream
-      await this.processStream(response.body);
+      await this.handleSSEConnection(response);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         // Normal abort, don't reconnect
@@ -82,6 +109,22 @@ export class RemoteListener {
       console.error("[RemoteListener] Connection error:", error);
       this.handleReconnect();
     }
+  }
+
+  /**
+   * Handle SSE connection after successful response
+   */
+  private async handleSSEConnection(response: Response): Promise<void> {
+    if (!response.body) {
+      throw new Error("No response body");
+    }
+
+    // Reset reconnect attempts on successful connection
+    this.reconnectAttempts = 0;
+    console.log("[RemoteListener] Connected to SSE");
+
+    // Process the stream
+    await this.processStream(response.body);
   }
 
   /**

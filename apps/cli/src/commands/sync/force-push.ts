@@ -1,17 +1,15 @@
 import type { Command } from "commander";
 import fs from "node:fs/promises";
-import fsSync from "node:fs";
 import path from "node:path";
-import { readConfig, writeConfig } from "@/lib/config";
-import { getProfile } from "@/lib/profile";
+import { readConfig } from "@/lib/config";
 import { ApiClient } from "@/lib/api-client";
 import { parseMarkdown } from "@/lib/sync/utils";
+import { createAuthenticatedClient } from "@/lib/sync/auth-utils";
 import {
   DEFAULT_SYNC_DIR,
   findSyncDir,
   loadSyncConfig,
   loadSyncState,
-  validateProfile,
 } from "@/lib/sync/command-utils";
 import type {
   SyncConfig,
@@ -20,7 +18,7 @@ import type {
   SyncPushResponse,
   SyncPushChange,
 } from "@/lib/sync/types";
-import type { Config, Profile, OAuthState } from "@/types";
+import type { Config, Profile } from "@/types";
 
 
 
@@ -37,17 +35,27 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
   const syncDir = await findSyncDir(cwd, argv.dir);
   console.log(`Using sync directory: ${syncDir}`);
 
-  // Step 2: Load sync config
+  // Step 2: Load sync config (includes alias)
   console.log("Loading sync configuration...");
   const syncConfig = await loadSyncConfig(syncDir);
 
-  // Step 3: Determine profile to use
-  const profileAlias = argv.alias || syncConfig.alias;
+  // Step 3: Authenticate and create API client
+  console.log("Validating profile and authenticating...");
+  let apiClient: ApiClient;
+  let profile: Profile;
 
-  // Step 4: Validate profile
-  console.log("Validating profile...");
-  const config = await readConfig();
-  const profile = validateProfile(config, profileAlias);
+  try {
+    const auth = await createAuthenticatedClient(syncConfig.alias);
+    apiClient = auth.client;
+    profile = auth.profile;
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`\nError: ${error.message}`);
+    } else {
+      console.error("\nError: Failed to authenticate. Please run 'kontexted login'...");
+    }
+    process.exit(1);
+  }
 
   // Step 5: Warn about data loss if not forced
   if (!argv.force) {
@@ -61,23 +69,7 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
     }
   }
 
-  // Step 6: Create API client
-  console.log("Connecting to server...");
-  const apiClient = new ApiClient(
-    profile.serverUrl,
-    profile.oauth as OAuthState,
-    async () => {
-      // Update config with refreshed tokens
-      const updatedConfig = await readConfig();
-      const updatedProfile = getProfile(updatedConfig, profileAlias);
-      if (updatedProfile) {
-        updatedProfile.oauth = profile.oauth;
-        await writeConfig(updatedConfig);
-      }
-    }
-  );
-
-  // Step 7: Load sync state
+  // Step 6: Load sync state
   let state = await loadSyncState(syncDir);
   if (state === null) {
     state = { files: {}, folders: {}, lastFullSync: null, version: 1 };

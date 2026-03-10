@@ -4,10 +4,11 @@ import type { Command } from "commander";
 import { readConfig, writeConfig } from "@/lib/config";
 import { getProfile, profileExists } from "@/lib/profile";
 import { ApiClient } from "@/lib/api-client";
+import { createAuthenticatedClient } from "@/lib/sync/auth-utils";
+import { logDebug } from "@/lib/logger";
 import type { SyncConfig, SyncState, FileSyncState, FolderSyncState, RemoteNote, RemoteFolder } from "@/lib/sync/types";
 import { sha256 } from "@/lib/sync/crypto";
 import { updateGitignore, formatMarkdown, ensureDirectoryExists } from "@/lib/sync/utils";
-import { logDebug } from "@/lib/logger";
 import Database from "better-sqlite3";
 
 // ============ Types ============
@@ -85,7 +86,7 @@ export const handler = async (argv: { alias?: string; workspace?: string; dir?: 
     process.exit(1);
   }
 
-  const config = await readConfig();
+  let config = await readConfig();
 
   if (!profileExists(config, alias)) {
     console.error(`Error: Profile alias '${alias}' not found.`);
@@ -93,7 +94,7 @@ export const handler = async (argv: { alias?: string; workspace?: string; dir?: 
     process.exit(1);
   }
 
-  const profile = getProfile(config, alias)!;
+  let profile = getProfile(config, alias)!;
 
   // Step 2: Determine workspace
   const workspaceSlug = argv.workspace || profile.workspace;
@@ -134,15 +135,21 @@ export const handler = async (argv: { alias?: string; workspace?: string; dir?: 
   // Step 6: Create API client and fetch workspace data
   console.log("Fetching workspace data from server...");
 
-  const apiClient = new ApiClient(profile.serverUrl, profile.oauth, async () => {
-    // The ApiClient already updates this.oauth.tokens which references the same object
-    // as profile.oauth, so profile.oauth.tokens should have the new tokens.
-    // We just need to persist the config with the updated oauth state.
-    logDebug("[SYNC INIT] Persist callback called, saving tokens...");
-    logDebug(`[SYNC INIT] Current access token: ${apiClient.getOAuth().tokens?.access_token?.substring(0, 20)}...`);
-    await writeConfig(config);
-    logDebug("[SYNC INIT] Tokens saved successfully");
-  });
+  let apiClient: ApiClient;
+
+  try {
+    const auth = await createAuthenticatedClient(alias);
+    apiClient = auth.client;
+    profile = auth.profile;
+    config = auth.config;
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`\nError: ${error.message}`);
+    } else {
+      console.error("\nError: Failed to authenticate. Please run 'kontexted login'...");
+    }
+    process.exit(1);
+  }
 
   let pullResponse: SyncPullResponse;
   try {

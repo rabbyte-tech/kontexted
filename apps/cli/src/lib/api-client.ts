@@ -102,7 +102,7 @@ export class ApiClient {
    * Refresh the access token using the refresh token
    * @returns true if refresh was successful, false otherwise
    */
-  private async refreshToken(): Promise<boolean> {
+  async refreshToken(): Promise<boolean> {
     if (!this.oauth.tokens?.refresh_token) {
       logError("[API CLIENT] No refresh token available");
       return false;

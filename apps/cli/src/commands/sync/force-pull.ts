@@ -1,21 +1,18 @@
 import type { Command } from "commander";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readConfig, writeConfig } from "@/lib/config";
-import { getProfile } from "@/lib/profile";
 import { ApiClient } from "@/lib/api-client";
 import { ensureDirectoryExists, formatMarkdown, computeFilePath } from "@/lib/sync/utils";
 import { sha256 } from "@/lib/sync/crypto";
+import { createAuthenticatedClient } from "@/lib/sync/auth-utils";
 import {
-  DEFAULT_SYNC_DIR,
   findSyncDir,
   loadSyncConfig,
   loadSyncState,
   saveSyncState,
-  validateProfile,
 } from "@/lib/sync/command-utils";
-import type { SyncConfig, SyncState, RemoteNote, SyncPullResponse } from "@/lib/sync/types";
-import type { Config, Profile, OAuthState } from "@/types";
+import type { SyncState, SyncPullResponse } from "@/lib/sync/types";
+import type { Profile } from "@/types";
 
 
 
@@ -52,15 +49,26 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
   console.log("Loading sync configuration...");
   const syncConfig = await loadSyncConfig(syncDir);
 
-  // Step 3: Determine profile to use
+  // Step 3: Authenticate and create API client
   const profileAlias = argv.alias || syncConfig.alias;
+  console.log(`Validating profile '${profileAlias}' and authenticating...`);
+  let apiClient: ApiClient;
+  let profile: Profile;
 
-  // Step 4: Validate profile
-  console.log("Validating profile...");
-  const config = await readConfig();
-  const profile = validateProfile(config, profileAlias);
+  try {
+    const auth = await createAuthenticatedClient(profileAlias);
+    apiClient = auth.client;
+    profile = auth.profile;
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`\nError: ${error.message}`);
+    } else {
+      console.error("\nError: Failed to authenticate. Please run 'kontexted login'...");
+    }
+    process.exit(1);
+  }
 
-  // Step 5: Warn about data loss if not forced
+  // Step 4: Warn about data loss if not forced
   if (!argv.force) {
     console.log("\n⚠️  WARNING: This will overwrite ALL local files with remote versions.");
     console.log("   Any local changes that don't exist on the server will be LOST.");
@@ -72,23 +80,7 @@ export async function handler(argv: { force?: boolean; dir?: string; alias?: str
     }
   }
 
-  // Step 6: Create API client
-  console.log("Connecting to server...");
-  const apiClient = new ApiClient(
-    profile.serverUrl,
-    profile.oauth as OAuthState,
-    async () => {
-      // Update config with refreshed tokens
-      const updatedConfig = await readConfig();
-      const updatedProfile = getProfile(updatedConfig, profileAlias);
-      if (updatedProfile) {
-        updatedProfile.oauth = profile.oauth;
-        await writeConfig(updatedConfig);
-      }
-    }
-  );
-
-  // Step 7: Fetch all notes from server
+  // Step 6: Fetch all notes from server
   console.log("Fetching remote notes...");
   let response: Response;
   try {
