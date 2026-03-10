@@ -41,10 +41,13 @@ export async function createAuthenticatedClient(
     };
   };
 
+  // Create a single persist callback to be reused
+  const persistCallback = createPersistCallback();
+
   // Proactively validate/refresh tokens before creating the client
   const tokensValid = await ensureValidTokens(
     profile.oauth,
-    createPersistCallback(),
+    persistCallback,
     profile.serverUrl
   );
 
@@ -54,11 +57,11 @@ export async function createAuthenticatedClient(
     );
   }
 
-  // Create the ApiClient with the same deep-copy persist callback
+  // Create the ApiClient with the same persist callback
   const client = new ApiClient(
     profile.serverUrl,
     profile.oauth,
-    createPersistCallback()
+    persistCallback
   );
 
   return { client, config, profile };
