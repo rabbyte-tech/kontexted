@@ -10,6 +10,7 @@ export class RemoteListener {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private reconnectDelay = 1000;
+  private readonly TOKEN_REFRESH_BUFFER_SECONDS = 5 * 60; // Refresh 5 minutes before expiry
   private isRunning = false;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private onStopped?: () => void;
@@ -47,7 +48,25 @@ export class RemoteListener {
     const url = `${this.apiClient.baseUrl}/api/sync/events?workspaceSlug=${encodeURIComponent(this.workspaceSlug)}`;
     this.abortController = new AbortController();
 
-    // Get fresh token before connecting
+    // Proactively check and refresh token BEFORE connecting
+    const tokens = this.apiClient.getOAuth().tokens;
+    const now = Math.floor(Date.now() / 1000);
+    
+    // Check if token is missing, expired, or expiring within buffer time
+    const needsRefresh = !tokens?.access_token || 
+      (tokens.expires_at && tokens.expires_at <= now + this.TOKEN_REFRESH_BUFFER_SECONDS);
+    
+    if (needsRefresh) {
+      console.log("[RemoteListener] Token expired or expiring soon, refreshing before connect...");
+      const refreshed = await this.apiClient.refreshToken();
+      if (!refreshed) {
+        console.error("[RemoteListener] Failed to refresh token before connect");
+        this.handleReconnect();
+        return;
+      }
+    }
+    
+    // Get fresh token after potential refresh
     let accessToken = this.apiClient.getAccessToken();
     
     if (!accessToken) {

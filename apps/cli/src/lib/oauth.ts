@@ -441,7 +441,12 @@ export async function ensureValidTokens(
       newTokens.expires_at = Math.floor(Date.now() / 1000) + newTokens.expires_in;
     }
     
-    oauth.tokens = newTokens;
+    // Merge with existing to preserve refresh_token if not returned by server
+    oauth.tokens = {
+      ...oauth.tokens,
+      ...newTokens,
+      refresh_token: newTokens.refresh_token ?? oauth.tokens?.refresh_token,
+    };
     await persist();
     
     logInfo("Token refresh successful", { 

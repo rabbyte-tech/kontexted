@@ -62,6 +62,9 @@ export class SyncEngine {
   private state: SyncState;
   private running = false;
   private paused = false;
+  private tokenRefreshInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly TOKEN_REFRESH_CHECK_INTERVAL_MS = 30 * 60 * 1000; // Check every 30 minutes
+  private readonly TOKEN_REFRESH_BUFFER_SECONDS = 10 * 60; // Refresh 10 minutes before expiry
 
   constructor(
     private syncDir: string,
@@ -140,7 +143,39 @@ export class SyncEngine {
     // Start listening for remote changes
     await this.remoteListener.start();
 
+    // Start periodic token refresh to prevent auth expiry
+    this.startTokenRefreshTimer();
+
     console.log("Sync engine started");
+  }
+
+  /**
+   * Start periodic token refresh to prevent auth expiry during long-running sessions
+   */
+  private startTokenRefreshTimer(): void {
+    this.tokenRefreshInterval = setInterval(async () => {
+      if (!this.running) return;
+
+      try {
+        const tokens = this.apiClient.getOAuth().tokens;
+        const now = Math.floor(Date.now() / 1000);
+
+        // Check if token is expired or expiring soon
+        if (!tokens?.expires_at || tokens.expires_at <= now + this.TOKEN_REFRESH_BUFFER_SECONDS) {
+          console.log("[SyncEngine] Token expiring soon, refreshing proactively...");
+          const refreshed = await this.apiClient.refreshToken();
+          if (!refreshed) {
+            console.error("[SyncEngine] Proactive token refresh failed - will retry on next check");
+          } else {
+            console.log("[SyncEngine] Token refreshed successfully");
+          }
+        }
+      } catch (error) {
+        console.error("[SyncEngine] Token refresh check error:", error);
+      }
+    }, this.TOKEN_REFRESH_CHECK_INTERVAL_MS);
+
+    console.log("[SyncEngine] Token refresh timer started");
   }
 
   /**
@@ -149,6 +184,13 @@ export class SyncEngine {
    */
   stop(): void {
     this.running = false;
+
+    // Stop token refresh timer
+    if (this.tokenRefreshInterval) {
+      clearInterval(this.tokenRefreshInterval);
+      this.tokenRefreshInterval = null;
+    }
+
     this.fileWatcher.stop();
     this.remoteListener.stop();
     this.queue.close();

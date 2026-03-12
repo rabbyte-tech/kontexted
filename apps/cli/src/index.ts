@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { Command } from "commander";
 import { registerLoginCommand } from "@/commands/login";
+import { registerReLoginCommand } from "@/commands/relogin";
 import { registerLogoutCommand } from "@/commands/logout";
 import { registerShowConfigCommand } from "@/commands/show-config";
 import { registerMcpCommand } from "@/commands/mcp";
@@ -25,6 +26,7 @@ program
 
 // Register subcommands
 registerLoginCommand(program);
+registerReLoginCommand(program);
 registerLogoutCommand(program);
 registerShowConfigCommand(program);
 registerSkillCommand(program);

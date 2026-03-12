@@ -134,14 +134,17 @@ export class ApiClient {
         return false;
       }
 
-const tokens = (await response.json()) as typeof this.oauth.tokens;
+      const newTokens = (await response.json()) as typeof this.oauth.tokens;
 
-// Calculate absolute expiry time if not provided by server
-if (tokens.expires_in && !tokens.expires_at) {
-  tokens.expires_at = Math.floor(Date.now() / 1000) + tokens.expires_in;
-}
-
-this.oauth.tokens = tokens;
+      // Merge with existing to preserve refresh_token if not returned by server
+      if (newTokens.expires_in && !newTokens.expires_at) {
+        newTokens.expires_at = Math.floor(Date.now() / 1000) + newTokens.expires_in;
+      }
+      this.oauth.tokens = {
+        ...this.oauth.tokens,
+        ...newTokens,
+        refresh_token: newTokens.refresh_token ?? this.oauth.tokens?.refresh_token,
+      };
 await this.persist();
 
 logDebug("[API CLIENT] Token refresh successful");
